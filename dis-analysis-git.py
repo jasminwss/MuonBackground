@@ -15,7 +15,7 @@ parser.add_argument('--paths', dest='paths', help='Comma-separated list of paths
 parser.add_argument('--trackinfo', dest='trackinfo', help='Should be activated when a print-output should be produced about all particles passing selection cuts', action='store_true', required=False) # more 
 parser.add_argument('--cutSBTDIS', dest='cutSBTDIS', help='Argument to apply a cut only considering particles with DIS in SBT in a distance (cm) to decay vessel entrance', default=None, action='store', required=False)
 parser.add_argument('--onlySBTDIS', dest='onlySBTDIS', help='Should be activated when only particles are considered with DIS in SBT', action='store_true', required=False)
-parser.add_argument('--tag', dest='tag', action='store', default='', help='add a tag to produced file name', required=False) # argument for giving additional tag to file name
+parser.add_argument('--U', dest='tag', action='store', default='', help='add a tag to produced file name', required=False) # argument for giving additional tag to file name
 parser.add_argument('--ip_cut', dest='ip_cut', help='argument to apply a cut on the impact parameter, ip in cm', default=None, action='store', required=False)
 ## next arguments are not compatible, so hardwire that here
 sin_cut = parser.add_mutually_exclusive_group()
@@ -549,6 +549,10 @@ def main_analysis(event, sgeo, ShipGeo, rescale_fn=None, eventNr=None, counts=No
             return
     
     for part in event.Particles: ## This means all particle candidates that are found in reconstruction -> everything with two tracks
+        
+        ## define a vector to get vertex positon
+        part_vtx = ROOT.TVector3()
+        part.GetVertex(part_vtx)
 
         if cutSBTDIS:
             # skip candidate if z-vertex is deeper than 5 m downstream
@@ -558,10 +562,6 @@ def main_analysis(event, sgeo, ShipGeo, rescale_fn=None, eventNr=None, counts=No
             #if part_vtx.Z() < z_downstream_limit: #couldnt it be if dist2entrance(part_vtx) < cutSBTDIS
             if dist2Entrance(part_vtx) < cutSBTDIS:
                 continue
-        
-        ## define a vector to get vertex positon
-        part_vtx = ROOT.TVector3()
-        part.GetVertex(part_vtx)
 
         if cut:
             # pass
