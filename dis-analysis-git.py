@@ -116,10 +116,10 @@ _genfit_field_ready = False
 
 # ---------- setting up test option ----------#
 if options.testing_code:
-     directory = './test_'
+     directory = '/afs/cern.ch/work/j/jaweiss/private/test_'
      print('test option')
 else:
-     directory = './'
+     directory = '/afs/cern.ch/work/j/jaweiss/private/'
      print('no test')
 
 # ---------- extracting information from arguments ----------#
