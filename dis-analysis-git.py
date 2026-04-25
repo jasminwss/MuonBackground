@@ -1695,7 +1695,7 @@ def main_analysis(event, sgeo, ShipGeo, rescale_fn=None, eventNr=None, counts=No
                 rounded_status2 = int(round(status2.getNdf()))
                 selected_vtx = ROOT.TVector3()
                 part.GetVertex(selected_vtx)
-                if (len(event.Particles) == 1) and rounded_status1 > 25 and rounded_status2 > 25 and status1.getChi2()/status1.getNdf() < 5 and status2.getChi2()/status2.getNdf() < 5 and event.FitTracks[part.GetDaughter(0)].getFittedState().getMom().Mag() > 1 and event.FitTracks[part.GetDaughter(1)].getFittedState().getMom().Mag() > 1: # has a reco and Good Daughters 
+                if rounded_status1 > 25 and rounded_status2 > 25 and status1.getChi2()/status1.getNdf() < 5 and status2.getChi2()/status2.getNdf() < 5 and event.FitTracks[part.GetDaughter(0)].getFittedState().getMom().Mag() > 1 and event.FitTracks[part.GetDaughter(1)].getFittedState().getMom().Mag() > 1: # has a reco and Good Daughters 
                     #for PID eff 
                     #fill a histogram with the energyspectrum of the events surviving the cuts 
                     selected_mom = ROOT.TLorentzVector()

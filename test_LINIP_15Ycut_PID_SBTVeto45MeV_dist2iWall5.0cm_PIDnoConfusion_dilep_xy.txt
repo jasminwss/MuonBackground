@@ -1,0 +1,8 @@
+Sum of weights for xy_at_UBT histograms (total / inside UBT / outside UBT):
+xy_at_UBT_LiSc: total=0.0 (0), inside=0.0 (0), outside=0.0 (0)
+xy_at_UBT_UBT: total=0.0 (0), inside=0.0 (0), outside=0.0 (0)
+xy_at_UBT_all: total=0.5358489580439585 (4), inside=0.5358489580439585 (4), outside=0.0 (0)
+xy_at_UBT_helium: total=0.5358489580439585 (4), inside=0.5358489580439585 (4), outside=0.0 (0)
+xy_at_UBT_inner_wall: total=0.0 (0), inside=0.0 (0), outside=0.0 (0)
+xy_at_UBT_outer_wall: total=0.0 (0), inside=0.0 (0), outside=0.0 (0)
+xy_at_UBT_rib: total=0.0 (0), inside=0.0 (0), outside=0.0 (0)
