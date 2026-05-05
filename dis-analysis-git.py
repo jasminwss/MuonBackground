@@ -9,6 +9,8 @@ import yaml
 from ShipGeoConfig import AttrDict
 import dis_surviving_xyzplots as xyzplots
 from array import array
+from vertexeff import compute_vertexing_efficiency, persist_vertexing_efficiency, check_charge_misid, is_reconstructible_mc
+
 # ---------- setting up argument parser ----------#
 parser = ArgumentParser()
 parser.add_argument('--test', dest='testing_code', help='Run Test', required=False, action='store_true',default=False) # test option for the code
@@ -75,6 +77,7 @@ pid_eff_counts = {row: {'He': 0.0, 'SBT': 0.0} for row in pid_eff_rows}
 pid_eff_event_counts = {'He': 0.0, 'SBT': 0.0}
 mumu_origin_counts = defaultdict(float) #Tracks the origin of mu mu events 
 mu_origin_counts = [] #Tracks the origin of remaining events after cuts and veto are applied
+vtx_eff_counts = {'reconstructible': 0, 'found': 0, 'charge_misid': 0} # global counters for overall efficiency number
 cut_eff_rows = ['has a reco candidate', 'good daughter', 'has reco cand + good daughters', '1reco cand', 'fiducial', 'DOCA', 'IP<10', 'IP<250', 'IP<IP(z)', 'SBT veto', 'UBT Veto', 'mass > 0.15 GeV', 'basic cuts + IP<10', 'basic cuts + IP<250', 'basic cuts + IP<IP(z)', 'basic cuts + mass > 0.15 GeV', 'basic cuts + IP<10 f', 'basic cuts + IP<250 f', 'basic cuts + IP<IP(z) f', 'basic cuts + mass > 0.15 GeV f', 'basic cuts + IP<10 + SBT veto', 'basic cuts + IP<250 + SBT veto', 'basic cuts + IP<IP(z) + SBT veto', 'basic cuts + mass > 0.15 GeV + SBT veto', 'basic cuts + IP<10 + SBT veto f', 'basic cuts + IP<250 + SBT veto f', 'basic cuts + IP<IP(z) + SBT veto f', 'basic cuts + mass > 0.15 GeV + SBT veto f']
 cand_type_labels = ["ee", "mumu", "emu", "ex", "mux", "ll", "lx", "all"]
 cut_eff_counts = {
@@ -302,6 +305,21 @@ ut.bookHist(
 )
 
 ut.bookHist(h, f'x-y-IS-SBT', f'x-y-distribution of vertices in SBT before cuts; x [cm]; y[cm]',bin_coord,low_x,high_x,bin_coord,low_y,high_y)
+
+# ---------- histogram setup (in the booking section at the top) ----------#
+ut.bookHist(h, 'vtx_eff_z_reconstructible', 
+            'Reconstructible events vs z; z_{vtx,MC} [cm]; Events', 
+            50, -2500, 2500)
+ut.bookHist(h, 'vtx_eff_z_found',           
+            'Vertex found events vs z; z_{vtx,MC} [cm]; Events',     
+            50, -2500, 2500)
+ut.bookHist(h, 'vtx_eff_z_ratio',           
+            'Vertexing efficiency vs z; z_{vtx,MC} [cm]; Efficiency',
+            50, -2500, 2500)
+ut.bookHist(h, 'charge_misid_z',            
+            'Charge mis-ID events vs z; z_{vtx,MC} [cm]; Events',    
+            50, -2500, 2500)
+
 
 
 keylist_hist.append('Massdistr_at_UBT_helium_inside')
@@ -1659,6 +1677,10 @@ def main_analysis(event, sgeo, ShipGeo, rescale_fn=None, eventNr=None, counts=No
     if baseName == 'VetoVerticalRib': baseName = 'VetoLongitRib'
 
     region_label = region_label_from_basename(baseName)
+
+    # ---------- check vertex efficiency ----------#
+    compute_vertexing_efficiency(event, sgeo, h, vtx_eff_counts, ShipGeo, veto_geo)
+
     # ---------- reject non-SBT IS early  ----------# 
     if onlySBTDIS and baseName not in sbt_region_names:
         # skip event entirely if IS did not occur in SBT
@@ -2097,7 +2119,7 @@ def Main_function():
                     if not _genfit_field_ready:
                         initial_AnalysisContext(ShipGeo)
                 
-                if options.testing_code and files > 5:
+                if options.testing_code and files > 15:
                     break
                 
                 print(files, jobDir)
@@ -2134,6 +2156,11 @@ def Main_function():
     persist_mu_origin_counts(output_base)
     persist_SBT_stats(output_base)
     persist_selection_rawtable(output_base)
+    persist_vertexing_efficiency(output_base, h, vtx_eff_counts)
+    keylist_colz.append('vtx_eff_z_ratio')
+    keylist_colz.append('charge_misid_z')
+    ut.writeHists(h, directory+tag+options_tag+'plots.root')
+    print(f"Histograms saved to {directory+tag+options_tag+'plots.root'}")
     # Generate xyz scatter plots
     if xyz_groups:
         print("Generating xyz position plots...")

@@ -21,7 +21,7 @@ def load_style():
     try:
         plt.style.use(str(style_path))
     except Exception:
-        print('using default style')
+        #print('using default style')
         plt.style.use('default')
 
 def add_geometry(ax_zx, ax_zy, ax_xy, show_detectors=True):
