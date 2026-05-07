@@ -1784,7 +1784,8 @@ def main_analysis(event, sgeo, ShipGeo, rescale_fn=None, eventNr=None, counts=No
     # Step 7: IP
     step7 = [r for r in step6 if passes_ip(r)]
     # Step 8: SBT veto (45 MeV default, or test any threshold instantly)
-    step8 = [r for r in step7 if passes_sbt_veto(r, SBTVeto * 0.001)]
+    #step8 = [r for r in step7 if passes_sbt_veto(r, SBTVeto * 0.001)]
+    print(step7)
 
 
                                     
