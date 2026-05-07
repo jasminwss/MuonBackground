@@ -12,6 +12,7 @@ from ShipGeoConfig import AttrDict
 import dis_surviving_xyzplots as xyzplots
 from array import array
 from vertexeff import compute_vertexing_efficiency, persist_vertexing_efficiency, check_charge_misid, is_reconstructible_mc
+from dataclasses import dataclass
 
 # ---------- setting up argument parser ----------#
 parser = ArgumentParser()
@@ -45,9 +46,33 @@ options = parser.parse_args() # with that you can then access the arguments by o
 
 ana_part = 'muon'
 
+# --------- data class ----------#
+@dataclass
+class CandidateRecord:
+    region: str
+    weight: float
+    cand_type: str        # 'ee', 'mumu', 'emu', etc.
+    mass: float
+    ip_value: float
+    doca: float
+    dist2wall: float
+    dist2entrance: float
+    ndf1: float
+    ndf2: float
+    chi2ndf1: float
+    chi2ndf2: float
+    mom1: float
+    mom2: float
+    max_sbt_eloss: float  # max over all valid hits, in GeV
+    vertex_z: float
+    n_candidates: int     # len(event.Particles) at time of collection
+
+records = []  # global or passed around
+
 # ---------- define regions  ----------#
 
 region_labels = ['helium','LiSc','inner_wall','outer_wall','rib','UBT']
+sbt_region_names = {'LiSc','VetoInnerWall','VetoOuterWall','VetoLongitRib'}
 selection_steps = [
     'DIS in region',
     'has reco candidate',
@@ -61,8 +86,7 @@ selection_steps = [
 ]
 if options.mass_cut:
     selection_steps.append('mass > 0.15 GeV + SBT veto')
- # add combined cut as last step, with different name if not applying cuts
-sbt_region_names = {'LiSc','VetoInnerWall','VetoOuterWall','VetoLongitRib'}
+
 
 # ---------- setting histograms and dictionaries ----------#
 counts = {reg: [0.0 for _ in selection_steps] for reg in region_labels} #counts[region][step_index] creates empty table
@@ -1697,6 +1721,55 @@ def main_analysis(event, sgeo, ShipGeo, rescale_fn=None, eventNr=None, counts=No
 
     # ---------- calculate pure PID efficiency calculations - before any cuts (except for those events taking place we do not include when running with cutSBTDIS or so) ----------#  
     if len(event.Particles) > 0:
+
+        for part in event.Particles:
+
+            pid_code = pid_decision(event, candidate=part) # calculate the PID code based on truth info and applies confusion matrix
+
+            status1 = event.FitTracks[part.GetDaughter(0)].getFitStatus()
+            status2 = event.FitTracks[part.GetDaughter(1)].getFitStatus()
+            ndf1 = int(round(status1.getNdf()))
+            ndf2 = int(round(status2.getNdf()))
+
+            vtx = ROOT.TVector3()
+            part.GetVertex(vtx)
+            mom = ROOT.TLorentzVector()
+            part.Momentum(mom)
+
+            # collect SBT eloss raw values
+            bestHits = []
+            for tr in [part.GetDaughter(0), part.GetDaughter(1)]:
+                hits, *_ = extrapolateTrackToSBT(event, tr)
+                bestHits.extend(hits)
+
+            valid_hits = [h for h in bestHits if not (cutSBTDIS and Digi_Hit_beforeCutSBT(h, cutSBTDIS)) and not (cutSBTDISiny and abs(h.GetXYZ().Y()) <= slice_function(h.GetXYZ().Z()))]
+            max_eloss = max((h.GetEloss() for h in valid_hits), default=0.0)
+
+            records.append(CandidateRecord(
+            region        = region_label,
+            weight        = weight,
+            cand_type     = pid_code_to_label(pid_code),  # 'ee','mumu','emu','ex','mux'
+            mass          = mom.M(),
+            ip_value      = impact_parameter(vtx, mom, ShipGeo),
+            doca          = part.GetDoca(),
+            dist2wall     = dist2InnerWall(vtx, sgeo),
+            dist2entrance = dist2Entrance(vtx),
+            ndf1          = ndf1,
+            ndf2          = ndf2,
+            chi2ndf1      = status1.getChi2() / ndf1 if ndf1 else 999,
+            chi2ndf2      = status2.getChi2() / ndf2 if ndf2 else 999,
+            mom1          = event.FitTracks[part.GetDaughter(0)].getFittedState().getMom().Mag(),
+            mom2          = event.FitTracks[part.GetDaughter(1)].getFittedState().getMom().Mag(),
+            max_sbt_eloss = max_eloss,
+            vertex_z      = vtx.Z(),
+            n_candidates  = len(event.Particles)))
+
+
+
+
+
+
+
         in_he = (baseName == 'DecayVacuum')
         in_sbt = baseName in sbt_region_names
         if in_he or in_sbt:
