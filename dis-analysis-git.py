@@ -1072,48 +1072,6 @@ def update_selection_rawcounts(region_label, step_index):
         return
     counts_raw[region_label][step_index] += 1
 
-def is_in_fiducial(candidate, event, sgeo, ShipGeo):
-    """Check if the candidate is within the Fiducial Volume and has hits in all four tracking stations"""
-
-    def tracks_in_fiducial(t1, t2):
-        """
-        Return True if BOTH daughter tracks (t1, t2) have hits in all
-        four straw‐tube stations (1, 2, 3, 4).  Return False otherwise.
-        """
-        required_stations = {1, 2, 3, 4}
-
-        for track_index in (t1, t2):
-            mc_id = event.fitTrack2MC[track_index]
-            seen_stations = set()
-            for hit in event.strawtubesPoint:
-                if hit.GetTrackID() == mc_id:
-                    det_id_str = str(hit.GetDetectorID())
-                    station = int(det_id_str[0])
-                    seen_stations.add(station)
-            
-            if not required_stations.issubset(seen_stations):
-                return False
-        return True  # both tracks are fine
-
-    candidate_pos = ROOT.TVector3()
-    candidate.GetVertex(candidate_pos)
-
-    if candidate_pos.Z() > ShipGeo.TrackStation1.z:
-        return False
-    if candidate_pos.Z() < veto_geo.z0:
-        return False
-
-    vertex_node = ROOT.gGeoManager.FindNode(
-        candidate_pos.X(), candidate_pos.Y(), candidate_pos.Z()
-    )
-    vertex_elem = vertex_node.GetVolume().GetName()
-    if not vertex_elem.startswith("DecayVacuum_"):
-        return False
-
-    t1, t2 = candidate.GetDaughter(0), candidate.GetDaughter(1)
-    if not tracks_in_fiducial(t1, t2):
-        return False
-    return True
 # Confusion matrix: PID_CONFUSION[true_type][reco_type] = probability
 # true_type and reco_type: 'e', 'mu', 'hadron'
 # "x" / "->"" is predicted, "y" / "|^"" is true
@@ -1685,6 +1643,53 @@ def make_TestVetos_plots(outfile_base):
     print(f"TestVetos plots saved to {outfile_base}TestVetos.root")
 
 
+
+#new functions 
+
+def good_daughters(record):
+    '''Returns True if both daughters of the candidate have good fit status and ndf>25, Chi^2/ndf < 5 and p>1 GeV.'''
+    if record.chi2ndf1 < 5 and record.chi2ndf2 < 5 and record.ndf1 > 25 and record.ndf2 > 25 and record.mom1 > 1.0 and record.mom2 > 1.0:
+        return True
+    else:
+        return False 
+
+def passes_fiducial(record):
+    '''Returns True if the candidate vertex is inside the fiducial volume
+    AND both daughter tracks have hits in all four straw-tube stations.
+    Called once per candidate in Phase 1; result stored as r.fiducial.
+    '''
+    vtx = ROOT.TVector3()
+    part.GetVertex(vtx)
+
+    if vtx.Z() > ShipGeo.TrackStation1.z:
+        return False
+    if vtx.Z() < veto_geo.z0:
+        return False
+    
+    node = ROOT.gGeoManager.FindNode(vtx.X(), vtx.Y(), vtx.Z())
+    if not node:
+        return False
+    if not node.GetVolume().GetName().startswith("DecayVacuum_"):
+        return False
+
+    # both daughters must have hits in all 4 straw stations"
+    required = {1,2,3,4}
+    for fit_idx in (part.GetDaughter(0), part.GetDaughter(1)):
+        mc_ID = event.fitTrack2MC[fit_idx]
+        seen = {int(str(hit.GetDetectorID())[0]) for hit in event.strawtubesPoints if hit.GetTrackID() == mc_ID}
+        if not required.issubset(seen):
+            return False
+    return True
+
+def passes_ip(r):
+    if channel == 'fullreco':
+        return r.ip_value < 10
+    else:  # partialreco
+        if partial_IP_cut:
+            return r.ip_value < partial_IP_cut
+        return r.ip_value < dileptonic_ip_tresh_from_z(r.vertex_z)
+
+
 # ---------- analysis ----------#
 def main_analysis(event, sgeo, ShipGeo, rescale_fn=None, eventNr=None, counts=None, finalstate=None):
     # ---------- weight calculation ----------#
@@ -1764,380 +1769,22 @@ def main_analysis(event, sgeo, ShipGeo, rescale_fn=None, eventNr=None, counts=No
             vertex_z      = vtx.Z(),
             n_candidates  = len(event.Particles)))
 
-
-
-
-
-
-
-        in_he = (baseName == 'DecayVacuum')
-        in_sbt = baseName in sbt_region_names
-        if in_he or in_sbt:
-            region_key = 'He' if in_he else 'SBT'
-            #for PID eff
-            pid_eff_event_counts[region_key] += weight
-            pid_eff_counts['all candidates'][region_key] += weight
-            ee_any,mumu_any,emu_any,ex_any,mux_any,ll_any,lx_any = False,False,False,False,False,False,False
-            #for cut eff
-            gd_any,reco_cand_any,fiducial_any,doca_any,ip10_any,ip250_any,ipz_any,sbt_veto_any,ubt_veto,mass_any,ip_partial_any = False,False,False,False,False,False,False,False,False,False,False
-            any_recocand = True # asked for len(event.Particles)>0 already 
-            sbt_veto_any_per_thr = {thr: False for thr in veto_thresholds} 
-            
-
-
-            for part in event.Particles: ## all particle candidates that are found in reconstruction -> everything with two tracks
-                status1 = event.FitTracks[part.GetDaughter(0)].getFitStatus()
-                status2 = event.FitTracks[part.GetDaughter(1)].getFitStatus()
-                rounded_status1 = int(round(status1.getNdf()))
-                rounded_status2 = int(round(status2.getNdf()))
-                selected_vtx = ROOT.TVector3()
-                part.GetVertex(selected_vtx)
-                if rounded_status1 > 25 and rounded_status2 > 25 and status1.getChi2()/status1.getNdf() < 5 and status2.getChi2()/status2.getNdf() < 5 and event.FitTracks[part.GetDaughter(0)].getFittedState().getMom().Mag() > 1 and event.FitTracks[part.GetDaughter(1)].getFittedState().getMom().Mag() > 1: # has a reco and Good Daughters 
-                    #for PID eff 
-                    #fill a histogram with the energyspectrum of the events surviving the cuts 
-                    selected_mom = ROOT.TLorentzVector()
-                    part.Momentum(selected_mom)
-                    Energy = abs(selected_mom.E())
-                    h[f'Energy_distribution'].Fill(Energy, weight)
-                    pid_code = pid_decision(event, candidate=part) # calculate the PID code based on truth info
-
-                    if pid_code == 1.1 or int(pid_code) == 3:
-                        ee_any = True
-                    if pid_code == 1.2 or int(pid_code) == 3:
-                        mumu_any = True
-                        if pid_code == 1.2:
-                            d1 = part.GetDaughter(0) #link to the first fitted track of the candidate
-                            d2 = part.GetDaughter(1)
-                            pdg1 = mother_pdg_from_fittrack(event, d1) # Return PDG code of the mother of a fit track's MC match
-                            pdg2 = mother_pdg_from_fittrack(event, d2)
-                            key = tuple(sorted((pdg1, pdg2))) # sorted such that (1,2)=(2,1)
-                            mumu_origin_counts[key] += weight
-                    if pid_code == 1.3 or int(pid_code) == 3:
-                        emu_any = True
-
-                    if pid_code == 2.1 or int(pid_code) == 3:
-                        ex_any = True
-                    if pid_code == 2.2 or int(pid_code) == 3:
-                        mux_any = True
-                    if int(pid_code) == 1 or int(pid_code) == 3:
-                        ll_any = True
-                    if int(pid_code) == 2 or int(pid_code) == 3:
-                        lx_any = True
-                    
-                    # for cut eff
-                    if rounded_status1 > 25 and rounded_status2 > 25 and status1.getChi2()/status1.getNdf() < 5 and status2.getChi2()/status2.getNdf() < 5 and event.FitTracks[part.GetDaughter(0)].getFittedState().getMom().Mag() > 1 and event.FitTracks[part.GetDaughter(1)].getFittedState().getMom().Mag() > 1: # Good Daughters 
-                        gd_any = True
-                        #SBT Extrapolation veto
-                        xs, ys, zs, bestHits = [],[],[],[]
-                        track_index_first,track_index_last = part.GetDaughter(0),part.GetDaughter(1)
-                        for tr in [track_index_first,track_index_last]:
-                            bestHit,xs_, ys_, zs_= extrapolateTrackToSBT(event,tr)
-                            xs.append(xs_)
-                            ys.append(ys_)
-                            zs.append(zs_)
-                            if len(bestHit):
-                                bestHits.extend(bestHit)       
-                        for hit in bestHits:
-                            ELoss    = hit.GetEloss()
-                            if SBTVeto is not None and (ELoss>=SBTVeto*0.001):
-                                sbt_veto_any = True
-                                for thr in veto_thresholds:
-                                    if ELoss * 1000 >= thr:
-                                        sbt_veto_any_per_thr[thr] = True
-                    if (len(event.Particles) == 1):
-                        reco_cand_any = True
-                    if (dist2InnerWall(selected_vtx,sgeo) > dist2iWall and dist2Entrance(selected_vtx) > 20 and is_in_fiducial(part, event, sgeo, ShipGeo)):
-                        fiducial_any = True
-                    if (part.GetDoca() < 1):
-                        doca_any = True
-                    if (impact_parameter(selected_vtx, selected_mom, ShipGeo) < 10):
-                        ip10_any = True
-                    if (impact_parameter(selected_vtx, selected_mom, ShipGeo) < 250):
-                        ip250_any = True
-                    if (impact_parameter(selected_vtx, selected_mom, ShipGeo) < dileptonic_ip_tresh(selected_vtx)):
-                        ipz_any = True
-                    if partial_IP_cut and (impact_parameter(selected_vtx, selected_mom, ShipGeo) < partial_IP_cut):
-                        ip_partial_any = True
-                    if selected_mom.M() > 0.15: #
-                        mass_any = True
-                    
-                # if (UBT_decision(event)):
-                #    ubt_veto_any = True
-                    nHits = 0
-                    for ahit in event.UpstreamTaggerPoint:
-                        nHits+=1
-                    if nHits>1:
-                        ubt_veto = True
-
-            #eventwise counts for PID eff
-            if ee_any:
-                pid_eff_counts['ee'][region_key] += weight
-            if mumu_any:
-                pid_eff_counts['mu mu'][region_key] += weight
-                #motherid = event.MCTrack[1].GetMotherId() 
-                #print(motherid)
-            if emu_any:
-                pid_eff_counts['e mu'][region_key] += weight
-            if ex_any:
-                pid_eff_counts['eX'][region_key] += weight
-            if mux_any:
-                pid_eff_counts['mu X'][region_key] += weight
-            if ll_any:
-                pid_eff_counts['ll'][region_key] += weight
-            if lx_any:
-                pid_eff_counts['lx'][region_key] += weight
-
-            #eventwise counts for cut eff
-
-            cand_types = [
-            (ee_any,   "ee"),
-            (mumu_any, "mumu"),
-            (emu_any,  "emu"),
-            (ex_any,   "ex"),
-            (mux_any,  "mux"),
-            (ll_any,   "ll"),
-            (lx_any,   "lx"),
-            (True,     "all")]
-
-            for cand_flag, cand_label in cand_types:
-                if not cand_flag:
-                    continue
-        
-                basic_cuts = False 
-                if any_recocand:
-                    cut_eff_counts['has a reco candidate'][region_key][cand_label] += weight
-                if gd_any:
-                    cut_eff_counts['good daughter'][region_key][cand_label] += weight
-                if any_recocand and gd_any:
-                    cut_eff_counts['has reco cand + good daughters'][region_key][cand_label] += weight
-                if reco_cand_any:
-                    cut_eff_counts['1reco cand'][region_key][cand_label] += weight
-                if fiducial_any:
-                    cut_eff_counts['fiducial'][region_key][cand_label] += weight
-                if doca_any:
-                    cut_eff_counts['DOCA'][region_key][cand_label] += weight
-                if ip10_any:
-                    cut_eff_counts['IP<10'][region_key][cand_label] += weight
-                if ip250_any:
-                    cut_eff_counts['IP<250'][region_key][cand_label] += weight
-                if ip_partial_any:
-                    _row = f'IP<{int(partial_IP_cut)}'
-                    if _row in cut_eff_counts:
-                        cut_eff_counts[_row][region_key][cand_label] += weight
-                if ipz_any:
-                    cut_eff_counts['IP<IP(z)'][region_key][cand_label] += weight
-                if not sbt_veto_any and any_recocand and gd_any:
-                    cut_eff_counts['SBT veto'][region_key][cand_label] += weight
-                for thr in veto_thresholds:
-                    if not sbt_veto_any_per_thr[thr]:
-                        cut_eff_counts_per_veto[thr]['SBT veto'][region_key][cand_label] += weight
-                if not ubt_veto:
-                    cut_eff_counts['UBT Veto'][region_key][cand_label] += weight
-                if mass_any: 
-                    cut_eff_counts['mass > 0.15 GeV'][region_key][cand_label] += weight
-                if any_recocand and gd_any and reco_cand_any and fiducial_any and doca_any:
-                    basic_cuts=True 
-                if basic_cuts and ip10_any:
-                    cut_eff_counts['basic cuts + IP<10'][region_key][cand_label] += weight
-                if basic_cuts and ip250_any:
-                    cut_eff_counts['basic cuts + IP<250'][region_key][cand_label] += weight
-                if basic_cuts and ipz_any:
-                    cut_eff_counts['basic cuts + IP<IP(z)'][region_key][cand_label] += weight
-                if basic_cuts and mass_any:
-                    cut_eff_counts['basic cuts + mass > 0.15 GeV'][region_key][cand_label] += weight
-                if basic_cuts and ip10_any and not sbt_veto_any:
-                    cut_eff_counts['basic cuts + IP<10 + SBT veto'][region_key][cand_label] += weight
-                if basic_cuts and ip250_any and not sbt_veto_any:
-                    cut_eff_counts['basic cuts + IP<250 + SBT veto'][region_key][cand_label] += weight
-                if basic_cuts and ipz_any and not sbt_veto_any:
-                    cut_eff_counts['basic cuts + IP<IP(z) + SBT veto'][region_key][cand_label] += weight
-                if basic_cuts and mass_any and not sbt_veto_any:
-                    cut_eff_counts['basic cuts + mass > 0.15 GeV + SBT veto'][region_key][cand_label] += weight
-
-
-    
-    
-    # ---------- where in X,Y does scatteirng in the SBT happen? ----------#    
-    if baseName in sbt_region_names:
-        #x_SBT =part_vtx.X()
-        #y_SBT = part_vtx.Y() #reco values
-        x_DIS = event.MCTrack[0].GetStartX()
-        y_DIS = event.MCTrack[0].GetStartY()
-        h['x-y-IS-SBT'].Fill(x_DIS, y_DIS, weight)
-
-    if region_label:
-        update_selection_counts(region_label, 0, weight)  # DIS in region
-        update_selection_rawcounts(region_label,0)
-        selected_candidate = None
-        selected_vtx = None
-        selected_mom = None
-        if len(event.Particles) > 0:
-            update_selection_counts(region_label, 1, weight)  # has reco candidate
-            update_selection_rawcounts(region_label,1)
-            for part in event.Particles:
-                pid_code = pid_decision(event, candidate=part) #makes a decision with ceratain efficiency and confusion matrix
-                pid_leptonic = (int(pid_code) == 1 or int(pid_code) == 3)
-                pid_semileptonic = (int(pid_code) == 2 or int(pid_code) == 3)
-            
-                # Check if PID requirements are satisfied (or PID is not activated)
-                pid_satisfied = False
-                if PID:
-                    if finalstate=='dileptonic':
-                        pid_satisfied = pid_leptonic
-                    elif finalstate=='semileptonic':
-                        pid_satisfied = pid_semileptonic
-                else:
-                    pid_satisfied = True  # PID not activated
-            
-                # Vetos (only apply if PID requirements are met or PID is not activated)
-                if pid_satisfied:
-                    #print("Candidate passed PID requirements")
-                    update_selection_counts(region_label, 2, weight)
-                    update_selection_rawcounts(region_label,2)
-                    # check quality and fiducial cuts on candidates; use first candidate satisfying chain
-
-                    part_vtx_tmp = ROOT.TVector3()
-                    part.GetVertex(part_vtx_tmp)
-                    status1 = event.FitTracks[part.GetDaughter(0)].getFitStatus()
-                    status2 = event.FitTracks[part.GetDaughter(1)].getFitStatus()
-                    rounded_status1 = int(round(status1.getNdf()))
-                    rounded_status2 = int(round(status2.getNdf()))
-                    if rounded_status1 <= 25 or rounded_status2 <= 25:
-                        continue
-                    if status1.getChi2()/status1.getNdf() >= 5 or status2.getChi2()/status2.getNdf() >= 5:
-                        continue
-                    if event.FitTracks[part.GetDaughter(0)].getFittedState().getMom().Mag() <= 1 or event.FitTracks[part.GetDaughter(1)].getFittedState().getMom().Mag() <= 1:
-                        continue
-                    selected_candidate = part
-                    selected_vtx = part_vtx_tmp
-                    selected_mom = ROOT.TLorentzVector()
-                    part.Momentum(selected_mom)
-                    break
-
-        if selected_candidate:
-            #print("mass difference ", selected_mom.M()- part.GetMass()) these are essentially the same
-            update_selection_counts(region_label, 3, weight)  # quality cuts
-            update_selection_rawcounts(region_label,3)
-            if len(event.Particles) == 1:
-                update_selection_counts(region_label, 4, weight)  # exactly 1 reco candidate
-                update_selection_rawcounts(region_label,4)
-                #distance to inner wall vs z vertex
-                z_vtx=event.MCTrack[0].GetStartZ()
-                d2wall = dist2InnerWall(selected_vtx, sgeo)
-                h['Dist2WallvsVtx_z'].Fill(z_vtx, d2wall)
-                if dist2InnerWall(selected_vtx,sgeo) > dist2iWall and dist2Entrance(selected_vtx) > 20 and is_in_fiducial(selected_candidate, event, sgeo, ShipGeo):
-                    update_selection_counts(region_label, 5, weight)  # fiducial
-                    update_selection_rawcounts(region_label,5)
-                    if selected_candidate.GetDoca() < 1:
-                        update_selection_counts(region_label, 6, weight)  # DOCA
-                        update_selection_rawcounts(region_label,6)
-                        if ip_cut:
-                        #  if impact_parameter(selected_vtx,selected_mom,ShipGeo) <= ip_cut:
-                         #       update_selection_counts(region_label, 6, weight)  # IP
-                            ip_satisfied = False
-                            if channel == 'fullreco':
-                                if impact_parameter(selected_vtx, selected_mom, ShipGeo) < ip_cut:
-                                    update_selection_counts(region_label, 7, weight)  # IP
-                                    update_selection_rawcounts(region_label,7)
-                                    ip_satisfied = True
-                            elif channel == 'partialreco': 
-                                if partial_IP_cut and impact_parameter(selected_vtx, selected_mom, ShipGeo) < partial_IP_cut:
-                                    update_selection_counts(region_label, 7, weight)  # IP
-                                    update_selection_rawcounts(region_label,7)
-                                    ip_satisfied = True
-                                elif impact_parameter(selected_vtx, selected_mom, ShipGeo) < dileptonic_ip_tresh(selected_vtx):
-                                    ip_satisfied = True
-                                    update_selection_counts(region_label, 7, weight)  # IP
-                                    update_selection_rawcounts(region_label,7)
-                                    
-                            #PID
-                            if ip_satisfied:
-                                Energy = abs(selected_mom.E())
-                                h[f'Energy_distribution2'].Fill(Energy, weight)
-                                #SBT Extrapolation veto
-                                xs, ys, zs, bestHits = [],[],[],[]
-                                AdvSBT_TagVeto = False
-                                track_index_first,track_index_last = selected_candidate.GetDaughter(0),selected_candidate.GetDaughter(1)
-                                #print("Track indices of the two daughter tracks:", track_index_first, track_index_last)
-
-                                for tr in [track_index_first,track_index_last]:
-                                    #print('extrapolation print:',extrapolateTrackToSBT(event,tr))
-                                    bestHit,xs_, ys_, zs_= extrapolateTrackToSBT(event,tr)
-                                    xs.append(xs_)
-                                    ys.append(ys_)
-                                    zs.append(zs_)
-
-                                    if len(bestHit):
-                                        bestHits.extend(bestHit)
-
-                                valid_hits = []
-                                for hit in bestHits:
-                                    #print ("Best SBT hit position:", hit.GetXYZ().X(), hit.GetXYZ().Y(), hit.GetXYZ().Z())
-                                    #print("slice function return:", slice_function(hit.GetXYZ().Z()))
-                                    if cutSBTDIS and Digi_Hit_beforeCutSBT(hit, cutSBTDIS): # for every hit we check whether its a hit before cutSBTDIS m -if so, then no veto can be applied
-                                        continue 
-                                    elif cutSBTDISiny and abs(hit.GetXYZ().Y()) <= slice_function(hit.GetXYZ().Z()): # the y of the digi hit is in the slice than veto cannot be applied 
-                                        continue
-                                    valid_hits.append(hit)
-                                #main veto decision
-                                for hit in valid_hits:
-                                    ELoss    = hit.GetEloss()
-                                    if SBTVeto is not None and ELoss>= SBTVeto*0.001:
-                                        AdvSBT_TagVeto=True
-                                #create plots for different extrapolation veto treshholds
-                                if veto_thresholds and ip_satisfied:
-                                    max_eloss_mev = max((hit.GetEloss() * 1000 for hit in valid_hits), default=0.0)
-                                    for thr in veto_thresholds:
-                                        veto_fired = (max_eloss_mev >= thr)
-                                        if not veto_fired:
-                                            counts_per_veto[thr][region_label][8] += weight
-
-                                if SBTVeto is not None and AdvSBT_TagVeto:
-                                    print(f"AdvSBT veto applied with threshold {SBTVeto} MeV")
-                                    pass  # veto triggered, do not count
-                                else:
-                                    update_selection_counts(region_label, 8, weight)  # SBT Veto passed
-                                    update_selection_rawcounts(region_label,8)
-                                    if options.mass_cut and selected_mom.M()<= 0.15:
-                                        pass  # veto triggered, do not count
-                                    else:
-                                        if options.mass_cut:
-                                            update_selection_counts(region_label, 9, weight)  # potential mass cut passed
-                                            update_selection_rawcounts(region_label,9)
-                                        else:
-                                            fill_SBT_plots(event, sgeo, ShipGeo, selected_vtx, selected_mom, weight, selected_mom.M(),baseName=baseName)
-                                            d1 = selected_candidate.GetDaughter(0)
-                                            d2 = selected_candidate.GetDaughter(1)
-                                            pdg1 = mother_pdg_from_fittrack(event, d1)
-                                            pdg2 = mother_pdg_from_fittrack(event, d2)
-                                            mu_origin_counts.append((region_label, pdg1, pdg2, selected_mom.M()))
-                                            mu_origin_counts.append((region_label, pdg1, pdg2, selected_mom.M()))
-                                            if baseName in sbt_region_names:
-                                                # build a single multi‑line string instead of printing directly
-                                                msg = []
-                                                msg.append(f"DIS in SBT passing cuts - region label: {region_label}\n")
-                                                msg.append(f"momentum: {selected_mom.Px()} {selected_mom.Py()} "
-                                                        f"{selected_mom.Pz()} {selected_mom.E()}\n")
-                                                msg.append(f"vertex position: {selected_vtx.X()} {selected_vtx.Y()} "
-                                                        f"{selected_vtx.Z()}\n")
-                                                msg.append(f"Mass: {selected_mom.M()}\n")
-                                                #print("Best hits in SBT:", bestHits)   # optional
-                                                for hit in bestHits:
-                                                    msg.append("-- new SBT hit --\n")
-                                                    msg.append(f"E-Loss (in SBT?): {hit.GetEloss()}\n")
-                                                    msg.append(f"Where hit in SBT: {hit.GetXYZ().X()} "
-                                                            f"{hit.GetXYZ().Y()} {hit.GetXYZ().Z()}\n")
-                                                    msg.append("\n")
-                                                # keep console output if you still want
-                                                print(''.join(msg), end='')
-                                                event_log_lines.append(''.join(msg))
-
-
-                                       # if selected_candidate.GetMass() <= 0.15 and mass_cut:
-                                        #    pass  # veto triggered, do not count
-                                       # else:
-                                        #    
-                                           
+    # calculate the cuts
+    # --- selection steps as successive filters ---
+    # Step 0: DIS in region — already stored in r.region, count directly
+    # Step 1: has reco candidate — all records (every record came from event.Particles > 0)
+    # Step 3: good daughters
+    step3 = [r for r in records if good_daughters(r)]
+    # Step 4: exactly 1 candidate
+    step4 = [r for r in step3 if r.n_candidates == 1]
+    # Step 5: fiducial
+    step5 = [r for r in step4 if passes_fiducial(r)]
+    # Step 6: DOCA
+    step6 = [r for r in step5 if r.doca < 1]
+    # Step 7: IP
+    step7 = [r for r in step6 if passes_ip(r)]
+    # Step 8: SBT veto (45 MeV default, or test any threshold instantly)
+    step8 = [r for r in step7 if passes_sbt_veto(r, SBTVeto * 0.001)]
 
 
                                     
