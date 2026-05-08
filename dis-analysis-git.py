@@ -460,25 +460,7 @@ def define_muon_weight(event,SHiP_running=15,w_DIS=None):
     return weight_i   
 
 
-def dist2InnerWall(part_vtx,sgeo):
-    #  dist = 0#X = ROOT.TVector3()
-    #X.SetXYZ(vtx_x, vtx_y, vtx_z)
-    nsteps = 8
-    dalpha = 2*ROOT.TMath.Pi()/nsteps
-    minDistance = float("inf")#100 *u.m
-    node = sgeo.FindNode(part_vtx.X(), part_vtx.Y(), part_vtx.Z())
-    if not node:
-        return 0
-    for n in range(nsteps):
-        alpha = n * dalpha
-        sdir  = (ROOT.TMath.Sin(alpha),ROOT.TMath.Cos(alpha),0.)
-        node = sgeo.InitTrack(part_vtx.X(), part_vtx.Y(), part_vtx.Z(), sdir[0], sdir[1], sdir[2])
-        nxt = sgeo.FindNextBoundary()
-        if not nxt:
-            continue
-        distance = sgeo.GetStep()
-        minDistance = min(minDistance, distance)
-    return minDistance if minDistance < 100000 else 0
+
 
 def dist2Entrance(part_vtx):
     return part_vtx.Z() - veto_geo.z0
@@ -1694,6 +1676,25 @@ def passes_ip_llLIN(r):
     return r.ip_value < dileptonic_ip_tresh(r)
         
 
+def dist2InnerWall(part_vtx,sgeo):
+    #  dist = 0#X = ROOT.TVector3()
+    #X.SetXYZ(vtx_x, vtx_y, vtx_z)
+    nsteps = 8
+    dalpha = 2*ROOT.TMath.Pi()/nsteps
+    minDistance = float("inf")#100 *u.m
+    node = sgeo.FindNode(part_vtx.X(), part_vtx.Y(), part_vtx.Z())
+    if not node:
+        return 0
+    for n in range(nsteps):
+        alpha = n * dalpha
+        sdir  = (ROOT.TMath.Sin(alpha),ROOT.TMath.Cos(alpha),0.)
+        node = sgeo.InitTrack(part_vtx.X(), part_vtx.Y(), part_vtx.Z(), sdir[0], sdir[1], sdir[2])
+        nxt = sgeo.FindNextBoundary()
+        if not nxt:
+            continue
+        distance = sgeo.GetStep()
+        minDistance = min(minDistance, distance)
+    return minDistance if minDistance < 100000 else 0
 
 # ---------- analysis ----------#
 def main_analysis(event, sgeo, ShipGeo, rescale_fn=None, eventNr=None, counts=None, finalstate=None):
@@ -1762,8 +1763,8 @@ def main_analysis(event, sgeo, ShipGeo, rescale_fn=None, eventNr=None, counts=No
             mass          = mom.M(),
             ip_value      = impact_parameter(vtx, mom, ShipGeo),
             doca          = part.GetDoca(),
-            dist2wall     = dist2InnerWall(vtx, sgeo),
-            dist2entrance = dist2Entrance(vtx),
+            vtx_dist2wall     = dist2InnerWall(vtx, sgeo),
+            vtx_dist2entrance = dist2Entrance(vtx),
             ndf1          = ndf1,
             ndf2          = ndf2,
             chi2ndf1      = status1.getChi2() / ndf1 if ndf1 else 999,
@@ -1773,7 +1774,7 @@ def main_analysis(event, sgeo, ShipGeo, rescale_fn=None, eventNr=None, counts=No
             max_sbt_eloss = max_eloss,
             vertex_z      = vtx.Z(),
             n_candidates  = len(event.Particles),
-            fiducial      = passes_fiducial(part, event, sgeo, ShipGeo)))
+            fiducial      = passes_fiducial(part, event, sgeo, ShipGeo) and vtx_dist2wall > dist2iWall and vtx_dist2entrance > 20))
 
     # calculate the cuts
     # --- selection steps as successive filters ---
