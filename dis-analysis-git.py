@@ -51,7 +51,7 @@ ana_part = 'muon'
 class CandidateRecord:
     region: str
     weight: float
-    cand_type: str        # 'ee', 'mumu', 'emu', etc.
+    cand_type: float        # 'ee', 'mumu', 'emu', etc.
     mass: float
     ip_value: float
     doca: float
@@ -65,7 +65,8 @@ class CandidateRecord:
     mom2: float
     max_sbt_eloss: float  # max over all valid hits, in GeV
     vertex_z: float
-    n_candidates: int     # len(event.Particles) at time of collection
+    n_candidates: int  # len(event.Particles) at time of collection
+    fiducial: bool   
 
 records = []  # global or passed around
 
@@ -1228,16 +1229,7 @@ def initial_AnalysisContext(ShipGeo):
 
     _genfit_field_ready = True
 
-def dileptonic_ip_tresh(part_vtx):
-    z = part_vtx.Z()
-    z_entrance = veto_geo.z0
-    z_exit = - z_entrance
-    #dileptonic_ip_tresh(z) = m * z + b = -240 / (z_entrance - z_exit) * z + b = -240 / (z_entrance - z_exit) * z + 10 + 240 / (z_entrance - z_exit) * z_entrance
-    #dileptonic_ip_tresh(z_entrance) = 10 = m * z_entrance + b
-    #dileptonic_ip_tresh(z_exit) = 250 = m * z_exit + b
-    #dileptonic_ip_tresh(z_entrance) - dileptonic_ip_tresh(z_exit) = -240 = m * (z_entrance - z_exit) => -240 / (z_entrance - z_exit) = m
-    #dileptonic_ip_tresh(z_entrance) =  -240 / (z_entrance - z_exit) * z_entrance + b = 10 => 10 + 240 / (z_entrance - z_exit) * z_entrance = b
-    return -240 / (z_entrance - z_exit) * z + 10 + 240 / (z_entrance - z_exit) * z_entrance
+
 
 def slice_function(z):
     '''Returns the y border of the slice at a given z. The slice is defined as |y|<(z-z_{entrance})•25 cm/(z_{exit}-z_{entrance})+15 cm.'''
@@ -1653,13 +1645,13 @@ def good_daughters(record):
     else:
         return False 
 
-def passes_fiducial(record):
+def passes_fiducial(record, event, sgeo, ShipGeo):
     '''Returns True if the candidate vertex is inside the fiducial volume
     AND both daughter tracks have hits in all four straw-tube stations.
     Called once per candidate in Phase 1; result stored as r.fiducial.
     '''
     vtx = ROOT.TVector3()
-    part.GetVertex(vtx)
+    record.GetVertex(vtx)
 
     if vtx.Z() > ShipGeo.TrackStation1.z:
         return False
@@ -1674,20 +1666,33 @@ def passes_fiducial(record):
 
     # both daughters must have hits in all 4 straw stations"
     required = {1,2,3,4}
-    for fit_idx in (part.GetDaughter(0), part.GetDaughter(1)):
+    for fit_idx in (record.GetDaughter(0), record.GetDaughter(1)):
         mc_ID = event.fitTrack2MC[fit_idx]
-        seen = {int(str(hit.GetDetectorID())[0]) for hit in event.strawtubesPoints if hit.GetTrackID() == mc_ID}
+        seen = {int(str(hit.GetDetectorID())[0]) for hit in event.strawtubesPoint if hit.GetTrackID() == mc_ID}
         if not required.issubset(seen):
             return False
     return True
 
-def passes_ip(r):
-    if channel == 'fullreco':
-        return r.ip_value < 10
-    else:  # partialreco
-        if partial_IP_cut:
-            return r.ip_value < partial_IP_cut
-        return r.ip_value < dileptonic_ip_tresh_from_z(r.vertex_z)
+def passes_ip_ll(r):
+    return r.ip_value < partial_IP_cut if partial_IP_cut else 250
+
+def passes_ip_lx(r):
+    return r.ip_value < 10
+
+def dileptonic_ip_tresh(r):
+    z = r.vertex_z
+    z_entrance = veto_geo.z0
+    z_exit = - z_entrance
+    #dileptonic_ip_tresh(z) = m * z + b = -240 / (z_entrance - z_exit) * z + b = -240 / (z_entrance - z_exit) * z + 10 + 240 / (z_entrance - z_exit) * z_entrance
+    #dileptonic_ip_tresh(z_entrance) = 10 = m * z_entrance + b
+    #dileptonic_ip_tresh(z_exit) = 250 = m * z_exit + b
+    #dileptonic_ip_tresh(z_entrance) - dileptonic_ip_tresh(z_exit) = -240 = m * (z_entrance - z_exit) => -240 / (z_entrance - z_exit) = m
+    #dileptonic_ip_tresh(z_entrance) =  -240 / (z_entrance - z_exit) * z_entrance + b = 10 => 10 + 240 / (z_entrance - z_exit) * z_entrance = b
+    return -240 / (z_entrance - z_exit) * z + 10 + 240 / (z_entrance - z_exit) * z_entrance
+
+def passes_ip_llLIN(r):
+    return r.ip_value < dileptonic_ip_tresh(r)
+        
 
 
 # ---------- analysis ----------#
@@ -1753,7 +1758,7 @@ def main_analysis(event, sgeo, ShipGeo, rescale_fn=None, eventNr=None, counts=No
             records.append(CandidateRecord(
             region        = region_label,
             weight        = weight,
-            cand_type     = pid_code_to_label(pid_code),  # 'ee','mumu','emu','ex','mux'
+            cand_type     = pid_code,  # 'ee','mumu','emu','ex','mux'
             mass          = mom.M(),
             ip_value      = impact_parameter(vtx, mom, ShipGeo),
             doca          = part.GetDoca(),
@@ -1767,7 +1772,8 @@ def main_analysis(event, sgeo, ShipGeo, rescale_fn=None, eventNr=None, counts=No
             mom2          = event.FitTracks[part.GetDaughter(1)].getFittedState().getMom().Mag(),
             max_sbt_eloss = max_eloss,
             vertex_z      = vtx.Z(),
-            n_candidates  = len(event.Particles)))
+            n_candidates  = len(event.Particles),
+            fiducial      = passes_fiducial(part, event, sgeo, ShipGeo)))
 
     # calculate the cuts
     # --- selection steps as successive filters ---
@@ -1778,14 +1784,21 @@ def main_analysis(event, sgeo, ShipGeo, rescale_fn=None, eventNr=None, counts=No
     # Step 4: exactly 1 candidate
     step4 = [r for r in step3 if r.n_candidates == 1]
     # Step 5: fiducial
-    step5 = [r for r in step4 if passes_fiducial(r)]
+    step5 = [r for r in step4 if r.fiducial]
     # Step 6: DOCA
     step6 = [r for r in step5 if r.doca < 1]
     # Step 7: IP
-    step7 = [r for r in step6 if passes_ip(r)]
+    step7_ll = [r for r in step6 if passes_ip_ll(r)]
+    step7_lx = [r for r in step6 if passes_ip_lx(r)]
+    step7_llLIN = [r for r in step6 if passes_ip_llLIN(r)]
     # Step 8: SBT veto (45 MeV default, or test any threshold instantly)
+    for step in [step7_ll, step7_lx, step7_llLIN]:
+        for r in step:
+
+            # also think about not using the cells for veto which are inside slice sbt or cut sbt!
+
     #step8 = [r for r in step7 if passes_sbt_veto(r, SBTVeto * 0.001)]
-    print(step7)
+    print(step3)
 
 
                                     
