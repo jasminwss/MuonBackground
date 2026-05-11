@@ -28,7 +28,7 @@ parser.add_argument('--tag', dest='tag', action='store', default='', help='add a
 # does not work anymore because ip_cut is set by choosing the channel
 parser.add_argument('--channel', dest='channel', help='argument to choose between fullreco and partialreco (applies ip cut automatically)', default=None, action='store', required=True)
 parser.add_argument('--PID', dest='PID', help='Should be activated when PID selection should be applied', default=False, action='store_true', required=False) # argument to apply PID selection 
-parser.add_argument('--SBTVeto', dest='SBTVeto', help='argument to choose between threshhold 0, 45, 90 MeV', default=None, action='store', required=False)
+parser.add_argument('--SBTVeto', dest='SBTVeto', help='argument to choose between threshhold 0 - 90 MeV', default=None, action='store', required=False)
 parser.add_argument('--dist2iWall', dest='dist2iWall', help='argument to choose from which distance to decay vessel inner wall (cm) vertices will be considerd (standard: 5cm)', default=None, action='store', required=False)
 parser.add_argument('--mass_cut', dest='mass_cut', help='Should be activated when a mass cut at 0.15 GeV should be applied', default=False, action='store_true', required=False) # argument to apply a mass cut > 0.15 GeV
 parser.add_argument('--partial_IP_cut', dest='partial_IP_cut', help='Argument to apply a cut on the impact parameter for the partial reco. channel, ip in cm', default=None, action='store', required=False) ####can be used instead of the dileptonic_ip_tresh for the partial reco. channel
@@ -53,6 +53,7 @@ class CandidateRecord:
     weight: float
     cand_type: float        # 'ee', 'mumu', 'emu', etc.
     mass: float
+    mom: object
     ip_value: float
     doca: float
     dist2wall: float
@@ -65,6 +66,7 @@ class CandidateRecord:
     mom2: float
     max_sbt_eloss: float  # max over all valid hits, in GeV
     vertex_z: float
+    vtx: object   
     n_candidates: int  # len(event.Particles) at time of collection
     fiducial: bool   
 
@@ -495,51 +497,6 @@ def fill_SBT_plots(event, sgeo, ShipGeo, part_vtx=None, part_mom=None, weight=1,
     h['xy_at_UBT_all'].Fill(x_UBT, y_UBT, weight)
     record_xy_weight('xy_at_UBT_all', x_UBT, y_UBT, weight)
 
-
-
-    if trackinfo:
-        try:
-            tid = getattr(event.MCTrack[0], "GetTrackID", lambda: None)()
-            startX = event.MCTrack[0].GetStartX()
-            startY = event.MCTrack[0].GetStartY()
-            startZ = event.MCTrack[0].GetStartZ()
-            px = event.MCTrack[0].GetPx()
-            py = event.MCTrack[0].GetPy()
-            pz = event.MCTrack[0].GetPz()
-            cross = getattr(event, "CrossSection", None)
-            w_mu = getattr(event.MCTrack[0], "GetWeight", lambda: None)()
-            print(
-                f"XY_FILL ALL: TrackID={tid} start=({startX:.2f},{startY:.2f},{startZ:.2f}) "
-                f"p=({px:.3f},{py:.3f},{pz:.3f}) x_UBT={x_UBT:.2f} y_UBT={y_UBT:.2f} "
-                f"weight={weight} w_mu={w_mu} cross={cross}"
-            )
-            DISx = event.MCTrack[1].GetStartX()
-            DISy = event.MCTrack[1].GetStartY()
-            DISz = event.MCTrack[1].GetStartZ()
-            print(f"DIS interaction point: {DISx:.4f}, {DISy:.4f}, {DISz:.4f}")
-            if part_vtx is not None and part_mom is not None:
-                print("impact parameter:", impact_parameter(part_vtx, part_mom, ShipGeo))
-        except Exception:
-            print("XY_FILL ALL: (failed to print debug info)")
-
-    # Fill region-specific histograms based on DIS interaction point
-    #origin_node = sgeo.FindNode(
-     #   event.MCTrack[0].GetStartX(), event.MCTrack[0].GetStartY(), event.MCTrack[0].GetStartZ()
-    #).GetName()
-    #baseName = origin_node.split("_")[0]
-    #if baseName[:4] == 'LiSc':
-     #   baseName = 'LiSc'
-    #if baseName == 'VetoVerticalRib':
-     #   baseName = 'VetoLongitRib'
-
-    #region_to_item = {
-     #   'DecayVacuum': 'helium',
-      #  'LiSc': 'LiSc',
-       # 'VetoInnerWall': 'inner_wall',
-        #'VetoOuterWall': 'outer_wall',
-        #'VetoLongitRib': 'rib',
-        #'glass': 'UBT',
-    #}
     item = region_label_from_basename(baseName)
     if not item:
         return
@@ -1744,8 +1701,10 @@ def main_analysis(event, sgeo, ShipGeo, rescale_fn=None, eventNr=None, counts=No
 
             vtx = ROOT.TVector3()
             part.GetVertex(vtx)
+            vtx_copy = ROOT.TVector3(vtx.X(), vtx.Y(), vtx.Z())
             mom = ROOT.TLorentzVector()
             part.Momentum(mom)
+            mom_copy = ROOT.TLorentzVector(mom.Px(), mom.Py(), mom.Pz(), mom.E())
 
             # collect SBT eloss raw values
             bestHits = []
@@ -1756,50 +1715,74 @@ def main_analysis(event, sgeo, ShipGeo, rescale_fn=None, eventNr=None, counts=No
             valid_hits = [h for h in bestHits if not (cutSBTDIS and Digi_Hit_beforeCutSBT(h, cutSBTDIS)) and not (cutSBTDISiny and abs(h.GetXYZ().Y()) <= slice_function(h.GetXYZ().Z()))]
             max_eloss = max((h.GetEloss() for h in valid_hits), default=0.0)
 
+            d2wall     = dist2InnerWall(vtx, sgeo)   
+            d2entrance = dist2Entrance(vtx)          
+
             records.append(CandidateRecord(
-            region        = region_label,
-            weight        = weight,
-            cand_type     = pid_code,  # 'ee','mumu','emu','ex','mux'
-            mass          = mom.M(),
-            ip_value      = impact_parameter(vtx, mom, ShipGeo),
-            doca          = part.GetDoca(),
-            vtx_dist2wall     = dist2InnerWall(vtx, sgeo),
-            vtx_dist2entrance = dist2Entrance(vtx),
-            ndf1          = ndf1,
-            ndf2          = ndf2,
-            chi2ndf1      = status1.getChi2() / ndf1 if ndf1 else 999,
-            chi2ndf2      = status2.getChi2() / ndf2 if ndf2 else 999,
-            mom1          = event.FitTracks[part.GetDaughter(0)].getFittedState().getMom().Mag(),
-            mom2          = event.FitTracks[part.GetDaughter(1)].getFittedState().getMom().Mag(),
-            max_sbt_eloss = max_eloss,
-            vertex_z      = vtx.Z(),
-            n_candidates  = len(event.Particles),
-            fiducial      = passes_fiducial(part, event, sgeo, ShipGeo) and vtx_dist2wall > dist2iWall and vtx_dist2entrance > 20))
+                region        = region_label,
+                weight        = weight,
+                cand_type     = pid_code,
+                mom           = mom_copy,
+                mass          = mom.M(),
+                ip_value      = impact_parameter(vtx, mom, ShipGeo),
+                doca          = part.GetDoca(),
+                dist2wall     = d2wall,       
+                dist2entrance = d2entrance,   
+                ndf1          = ndf1,
+                ndf2          = ndf2,
+                chi2ndf1      = status1.getChi2() / ndf1 if ndf1 else 999,
+                chi2ndf2      = status2.getChi2() / ndf2 if ndf2 else 999,
+                mom1          = event.FitTracks[part.GetDaughter(0)].getFittedState().getMom().Mag(),
+                mom2          = event.FitTracks[part.GetDaughter(1)].getFittedState().getMom().Mag(),
+                max_sbt_eloss = max_eloss,
+                vertex_z      = vtx.Z(),
+                vtx           = vtx_copy,
+                n_candidates  = len(event.Particles),
+                fiducial      = passes_fiducial(part, event, sgeo, ShipGeo) and d2wall > dist2iWall and d2entrance > 20))
 
     # calculate the cuts
-    # --- selection steps as successive filters ---
     # Step 0: DIS in region — already stored in r.region, count directly
     # Step 1: has reco candidate — all records (every record came from event.Particles > 0)
     # Step 3: good daughters
-    step3 = [r for r in records if good_daughters(r)]
+    gd = [r for r in records if good_daughters(r)]
     # Step 4: exactly 1 candidate
-    step4 = [r for r in step3 if r.n_candidates == 1]
+    cand1 = [r for r in records if r.n_candidates == 1]
     # Step 5: fiducial
-    step5 = [r for r in step4 if r.fiducial]
+    fiducial = [r for r in records if r.fiducial]
     # Step 6: DOCA
-    step6 = [r for r in step5 if r.doca < 1]
+    doca = [r for r in records if r.doca < 1]
     # Step 7: IP
-    step7_ll = [r for r in step6 if passes_ip_ll(r)]
-    step7_lx = [r for r in step6 if passes_ip_lx(r)]
-    step7_llLIN = [r for r in step6 if passes_ip_llLIN(r)]
+    step7_ll = [r for r in records if passes_ip_ll(r)]
+    step7_lx = [r for r in records if passes_ip_lx(r)]
+    step7_llLIN = [r for r in records if passes_ip_llLIN(r)]
     # Step 8: SBT veto (45 MeV default, or test any threshold instantly)
-    for step in [step7_ll, step7_lx, step7_llLIN]:
-        for r in step:
+    if SBTVeto is not None:
+        sbt_veto = [r for r in records if not (cutSBTDIS and r.region in sbt_region_labels and (r.vertex_z - veto_geo.z0) < cutSBTDIS) and not (cutSBTDISiny and r.region in sbt_region_labels and slice_sides_SBT(r)) and r.max_sbt_eloss < SBTVeto*0.001]
+    else:
+        sbt_veto = []
+    #mass 
+    mass = [r for r in records if r.mass > 0.15]
 
-            # also think about not using the cells for veto which are inside slice sbt or cut sbt!
+    # convert to sets of ids for intersection
+    passing = set(id(r) for r in gd) \
+            & set(id(r) for r in cand1) \
+            & set(id(r) for r in fiducial) \
+            & set(id(r) for r in doca) \
+            & set(id(r) for r in step7_ll) \
+            & set(id(r) for r in sbt_veto)
 
-    #step8 = [r for r in step7 if passes_sbt_veto(r, SBTVeto * 0.001)]
-    print(step3)
+    for r in records:
+        if id(r) in passing:
+            fill_SBT_plots(
+                event, sgeo, ShipGeo,
+                part_vtx = r.vtx,
+                part_mom = r.mom,
+                weight   = r.weight,
+                mass     = r.mass,
+                baseName = baseName,
+            )
+
+
 
 
                                     
@@ -1856,7 +1839,7 @@ def Main_function():
                     if not _genfit_field_ready:
                         initial_AnalysisContext(ShipGeo)
                 
-                if options.testing_code and files > 15:
+                if options.testing_code and files > 5:
                     break
                 
                 print(files, jobDir)
