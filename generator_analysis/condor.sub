@@ -1,0 +1,23 @@
+executable          	= condor.sh
+should_transfer_files 	= YES
+arguments             	= $(ClusterId) $(ProcId)
+notify_user				= jasminvweiss@gmail.com
+notification 			= Always
+
+##############################################################################################################
+output      = logs/job_$(Cluster)_$(Process).out
+error       = logs/job_$(Cluster)_$(Process).err
+log         = logs/job_$(Cluster).log
+##############################################################################################################
+
+#request_memory 		= 50 GB
+#request_disk			= 4 GB
+on_exit_remove   		= (ExitBySignal == False) && (ExitCode == 0)
+max_retries      		= 3
+requirements     		= Machine =!= LastRemoteHost
+
+##############################################################################################################
++JobFlavour="espresso"
+#+MaxRuntime = 600
+##############################################################################################################
+queue
