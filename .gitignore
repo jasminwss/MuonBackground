@@ -1,3 +1,9 @@
 plots_*/
 __pycache__/
 pion_origin_macro.py
+logs/
+*.txt
+*.cc
+*.root
+*.sh
+*.sub
