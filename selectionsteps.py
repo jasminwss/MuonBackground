@@ -26,16 +26,16 @@ def init_config(cfg_dict):
 
 region_labels = ['helium','LiSc','inner_wall','outer_wall','rib','UBT']
 
-#set PID after has a reco. but this is for comparison reasons with anupama
+#PID is applied last (after the impact-parameter cut, before the SBT veto), for comparison reasons with anupama
 selection_steps = [
     'DIS in region',
     'has reco candidate',
-    'incl. final state PID',
     'nDoF>25 & chi2/ndf<5 & p>1GeV',
     'exactly 1 reco candidate',
     'fiducial (walls>5cm, entrance>20cm)',
     'DOCA<1cm',
     'impact parameter',
+    'incl. final state PID',
     'SBT Veto + Skipping SBT m if applied'
 ]
 
@@ -145,20 +145,20 @@ def persist_selection_table(outfile_base):
     # selection_steps indices:
     #  0 DIS in region
     #  1 has reco candidate          <- denominator anchor
-    #  2 incl. final state PID       <- no EffCuts row
-    #  3 nDoF>25 & chi2/ndf<5 & p>1GeV  -> good daughter
-    #  4 exactly 1 reco candidate    -> 1reco cand
-    #  5 fiducial                    -> fiducial
-    #  6 DOCA<1cm                    -> DOCA
-    #  7 impact parameter            -> IP<10 or IP<IP(z)
+    #  2 nDoF>25 & chi2/ndf<5 & p>1GeV  -> good daughter
+    #  3 exactly 1 reco candidate    -> 1reco cand
+    #  4 fiducial                    -> fiducial
+    #  5 DOCA<1cm                    -> DOCA
+    #  6 impact parameter            -> IP<10 or IP<IP(z)
+    #  7 incl. final state PID       <- no EffCuts row
     #  8 SBT Veto + ...              -> SBT veto X MeV
     # (9 mass cut if present         -> no direct row)
     step_to_effcuts = {
-        3: 'good daughter',
-        4: '1reco cand',
-        5: 'fiducial',
-        6: 'DOCA',
-        7: ip_effcuts_row,
+        2: 'good daughter',
+        3: '1reco cand',
+        4: 'fiducial',
+        5: 'DOCA',
+        6: ip_effcuts_row,
     }
     if sbt_veto_effcuts_row is not None:
         step_to_effcuts[8] = sbt_veto_effcuts_row
@@ -169,11 +169,11 @@ def persist_selection_table(outfile_base):
         denom_sbt     = cut_eff_counts['has reco cand + good daughters'][region_key]['all']
 
         step_denom = {
+            2: denom_default,
             3: denom_default,
             4: denom_default,
             5: denom_default,
             6: denom_default,
-            7: denom_default,
             8: denom_sbt,      # SBT veto
         }
 
@@ -290,20 +290,20 @@ def persist_selection_rawtable(outfile_base):
     # selection_steps indices:
     #  0 DIS in region
     #  1 has reco candidate          <- denominator anchor
-    #  2 incl. final state PID       <- no EffCuts row
-    #  3 nDoF>25 & chi2/ndf<5 & p>1GeV  -> good daughter
-    #  4 exactly 1 reco candidate    -> 1reco cand
-    #  5 fiducial                    -> fiducial
-    #  6 DOCA<1cm                    -> DOCA
-    #  7 impact parameter            -> IP<10 or IP<IP(z)
+    #  2 nDoF>25 & chi2/ndf<5 & p>1GeV  -> good daughter
+    #  3 exactly 1 reco candidate    -> 1reco cand
+    #  4 fiducial                    -> fiducial
+    #  5 DOCA<1cm                    -> DOCA
+    #  6 impact parameter            -> IP<10 or IP<IP(z)
+    #  7 incl. final state PID       <- no EffCuts row
     #  8 SBT Veto + ...              -> SBT veto X MeV
     # (9 mass cut if present         -> no direct row)
     step_to_effcuts = {
-        3: 'good daughter',
-        4: '1reco cand',
-        5: 'fiducial',
-        6: 'DOCA',
-        7: ip_effcuts_row,
+        2: 'good daughter',
+        3: '1reco cand',
+        4: 'fiducial',
+        5: 'DOCA',
+        6: ip_effcuts_row,
     }
     if sbt_veto_effcuts_row is not None:
         step_to_effcuts[8] = sbt_veto_effcuts_row
@@ -560,11 +560,11 @@ def _factorized_step_value(raw_vals, target_step, region_key):
 
     # which denominator to use for each step
     step_denom = {
-        3: denom_default,  # good daughter
-        4: denom_default,  # 1reco cand
-        5: denom_default,  # fiducial
-        6: denom_default,  # DOCA
-        7: denom_default,  # IP
+        2: denom_default,  # good daughter
+        3: denom_default,  # 1reco cand
+        4: denom_default,  # fiducial
+        5: denom_default,  # DOCA
+        6: denom_default,  # IP
         8: denom_sbt,      # SBT veto  <-- corrected
     }
 

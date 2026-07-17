@@ -97,7 +97,7 @@ if options.testing_code:
      directory = '/afs/cern.ch/work/j/jaweiss/private/test_'
      print('test option')
 else:
-     directory = '/afs/cern.ch/work/j/jaweiss/private/'
+     directory = '/eos/user/j/jaweiss/results_muonbackground/'
      print('no test')
 
 # ---------- extracting information from arguments ----------#
@@ -1167,90 +1167,86 @@ def main_analysis(event, sgeo, ShipGeo, rescale_fn=None, eventNr=None, counts=No
         selected_candidate = None
         selected_vtx = None
         selected_mom = None
-        pid_any = False
         if len(event.Particles) > 0:
             update_selection_counts(region_label, 1, weight)  # has reco candidate
             update_selection_rawcounts(region_label,1)
             for part in event.Particles:
-                pid_code = pid_decision(event, candidate=part) #makes a decision with ceratain efficiency and confusion matrix
-                pid_leptonic = (int(pid_code) == 1 or int(pid_code) == 3)
-                pid_semileptonic = (int(pid_code) == 2 or int(pid_code) == 3)
-            
-                # Check if PID requirements are satisfied (or PID is not activated)
-                pid_satisfied = False
-                if PID:
-                    if finalstate=='dileptonic':
-                        pid_satisfied = pid_leptonic
-                    elif finalstate=='semileptonic':
-                        pid_satisfied = pid_semileptonic
-                else:
-                    pid_satisfied = True  # PID not activated
-            
-                # Vetos (only apply if PID requirements are met or PID is not activated)
-                if pid_satisfied:
-                    pid_any = True
-                    #print("Candidate passed PID requirements")
-                    # check quality and fiducial cuts on candidates; use first candidate satisfying chain
-
-                    part_vtx_tmp = ROOT.TVector3()
-                    part.GetVertex(part_vtx_tmp)
-                    status1 = event.FitTracks[part.GetDaughter(0)].getFitStatus()
-                    status2 = event.FitTracks[part.GetDaughter(1)].getFitStatus()
-                    rounded_status1 = int(round(status1.getNdf()))
-                    rounded_status2 = int(round(status2.getNdf()))
-                    if rounded_status1 <= 25 or rounded_status2 <= 25:
-                        continue
-                    if status1.getChi2()/status1.getNdf() >= 5 or status2.getChi2()/status2.getNdf() >= 5:
-                        continue
-                    if event.FitTracks[part.GetDaughter(0)].getFittedState().getMom().Mag() <= 1 or event.FitTracks[part.GetDaughter(1)].getFittedState().getMom().Mag() <= 1:
-                        continue
-                    selected_candidate = part
-                    selected_vtx = part_vtx_tmp
-                    selected_mom = ROOT.TLorentzVector()
-                    part.Momentum(selected_mom)
-                    break
-        if pid_any:
-            update_selection_counts(region_label, 2, weight)
-            update_selection_rawcounts(region_label,2)
+                # check quality cuts on candidates; use first candidate satisfying chain.
+                # PID is applied later (after the IP cut) to match Anupama's cutflow ordering.
+                part_vtx_tmp = ROOT.TVector3()
+                part.GetVertex(part_vtx_tmp)
+                status1 = event.FitTracks[part.GetDaughter(0)].getFitStatus()
+                status2 = event.FitTracks[part.GetDaughter(1)].getFitStatus()
+                rounded_status1 = int(round(status1.getNdf()))
+                rounded_status2 = int(round(status2.getNdf()))
+                if rounded_status1 <= 25 or rounded_status2 <= 25:
+                    continue
+                if status1.getChi2()/status1.getNdf() >= 5 or status2.getChi2()/status2.getNdf() >= 5:
+                    continue
+                if event.FitTracks[part.GetDaughter(0)].getFittedState().getMom().Mag() <= 1 or event.FitTracks[part.GetDaughter(1)].getFittedState().getMom().Mag() <= 1:
+                    continue
+                selected_candidate = part
+                selected_vtx = part_vtx_tmp
+                selected_mom = ROOT.TLorentzVector()
+                part.Momentum(selected_mom)
+                break
 
         if selected_candidate:
             #print("mass difference ", selected_mom.M()- part.GetMass()) these are essentially the same
-            update_selection_counts(region_label, 3, weight)  # quality cuts
-            update_selection_rawcounts(region_label,3)
+            update_selection_counts(region_label, 2, weight)  # quality cuts (nDoF, chi2, p)
+            update_selection_rawcounts(region_label,2)
             if len(event.Particles) == 1:
-                update_selection_counts(region_label, 4, weight)  # exactly 1 reco candidate
-                update_selection_rawcounts(region_label,4)
+                update_selection_counts(region_label, 3, weight)  # exactly 1 reco candidate
+                update_selection_rawcounts(region_label,3)
                 #distance to inner wall vs z vertex
                 z_vtx=event.MCTrack[0].GetStartZ()
                 d2wall = dist2InnerWall(selected_vtx, sgeo)
                 h['Dist2WallvsVtx_z'].Fill(z_vtx, d2wall)
                 if dist2InnerWall(selected_vtx,sgeo) > dist2iWall and dist2Entrance(selected_vtx) > 20 and is_in_fiducial(selected_candidate, event, sgeo, ShipGeo):
-                    update_selection_counts(region_label, 5, weight)  # fiducial
-                    update_selection_rawcounts(region_label,5)
+                    update_selection_counts(region_label, 4, weight)  # fiducial
+                    update_selection_rawcounts(region_label,4)
                     if selected_candidate.GetDoca() < 1:
-                        update_selection_counts(region_label, 6, weight)  # DOCA
-                        update_selection_rawcounts(region_label,6)
+                        update_selection_counts(region_label, 5, weight)  # DOCA
+                        update_selection_rawcounts(region_label,5)
                         if ip_cut:
                         #  if impact_parameter(selected_vtx,selected_mom,ShipGeo) <= ip_cut:
-                         #       update_selection_counts(region_label, 6, weight)  # IP
+                         #       update_selection_counts(region_label, 5, weight)  # IP
                             ip_satisfied = False
                             if channel == 'fullreco':
                                 if impact_parameter(selected_vtx, selected_mom, ShipGeo) < ip_cut:
-                                    update_selection_counts(region_label, 7, weight)  # IP
-                                    update_selection_rawcounts(region_label,7)
+                                    update_selection_counts(region_label, 6, weight)  # IP
+                                    update_selection_rawcounts(region_label,6)
                                     ip_satisfied = True
-                            elif channel == 'partialreco': 
+                            elif channel == 'partialreco':
                                 if partial_IP_cut and impact_parameter(selected_vtx, selected_mom, ShipGeo) < partial_IP_cut:
-                                    update_selection_counts(region_label, 7, weight)  # IP
-                                    update_selection_rawcounts(region_label,7)
+                                    update_selection_counts(region_label, 6, weight)  # IP
+                                    update_selection_rawcounts(region_label,6)
                                     ip_satisfied = True
                                 elif impact_parameter(selected_vtx, selected_mom, ShipGeo) < dileptonic_ip_tresh(selected_vtx):
                                     ip_satisfied = True
-                                    update_selection_counts(region_label, 7, weight)  # IP
-                                    update_selection_rawcounts(region_label,7)
-                                    
-                            #PID
+                                    update_selection_counts(region_label, 6, weight)  # IP
+                                    update_selection_rawcounts(region_label,6)
+
+                            # PID cut, applied last (after IP) so the cutflow matches selection_steps order
+                            pid_satisfied = False
                             if ip_satisfied:
+                                pid_code = pid_decision(event, candidate=selected_candidate) #makes a decision with certain efficiency and confusion matrix
+                                pid_leptonic = (int(pid_code) == 1 or int(pid_code) == 3)
+                                pid_semileptonic = (int(pid_code) == 2 or int(pid_code) == 3)
+                                if PID:
+                                    if finalstate=='dileptonic':
+                                        pid_satisfied = pid_leptonic
+                                    elif finalstate=='semileptonic':
+                                        pid_satisfied = pid_semileptonic
+                                else:
+                                    pid_satisfied = True  # PID not activated
+
+                                if pid_satisfied:
+                                    update_selection_counts(region_label, 7, weight)  # incl. final state PID
+                                    update_selection_rawcounts(region_label,7)
+
+                            #extrapolation veto
+                            if pid_satisfied:
                                 Energy = abs(selected_mom.E())
                                 h[f'Energy_distribution2'].Fill(Energy, weight)
                                 #SBT Extrapolation veto
@@ -1330,13 +1326,6 @@ def main_analysis(event, sgeo, ShipGeo, rescale_fn=None, eventNr=None, counts=No
                                                 # keep console output if you still want
                                                 print(''.join(msg), end='')
                                                 event_log_lines.append(''.join(msg))
-
-
-                                       # if selected_candidate.GetMass() <= 0.15 and mass_cut:
-                                        #    pass  # veto triggered, do not count
-                                       # else:
-                                        #    
-                                           
 
 
                                     
