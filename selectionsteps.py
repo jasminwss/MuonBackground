@@ -52,6 +52,7 @@ xy_weight_outside = defaultdict(float)  # track outside-UBT weight totals for xy
 xy_weight_counts = defaultdict(int)  # track total candidate counts for xy_at_UBT histograms
 xy_weight_inside_counts = defaultdict(int)  # track inside-UBT candidate counts for xy_at_UBT histograms
 xy_weight_outside_counts = defaultdict(int)  # track outside-UBT candidate counts for xy_at_UBT histograms
+xy_weight_outside_masses = defaultdict(list)  # track candidate masses (GeV) for outside-UBT hits, for xy_at_UBT histograms
 pid_eff_rows = ['all candidates', 'ee', 'mu mu', 'e mu', 'eX', 'mu X', 'll', 'lx']
 pid_eff_counts = {row: {'He': 0.0, 'SBT': 0.0} for row in pid_eff_rows}
 pid_eff_event_counts = {'He': 0.0, 'SBT': 0.0}
@@ -70,7 +71,7 @@ cut_eff_counts = {
 cut_eff_event_counts = {'He': 0.0, 'SBT': 0.0}
 
 
-def record_xy_weight(key, x_val, y_val, weight):
+def record_xy_weight(key, x_val, y_val, weight, mass=None):
     """Accumulate weight sums and inside/outside counts for xy_at_UBT plots."""
     xy_weight_sums[key] += weight
     xy_weight_counts[key] += 1
@@ -81,6 +82,8 @@ def record_xy_weight(key, x_val, y_val, weight):
     else:
         xy_weight_outside[key] += weight
         xy_weight_outside_counts[key] += 1
+        if mass is not None:
+            xy_weight_outside_masses[key].append(mass)
 
 def persist_xy_weight_sums(outfile_base):
     """
@@ -97,9 +100,15 @@ def persist_xy_weight_sums(outfile_base):
         total_count = xy_weight_counts.get(key, 0)
         inside_count = xy_weight_inside_counts.get(key, 0)
         outside_count = xy_weight_outside_counts.get(key, 0)
+        outside_tag = f"{outside_count}"
+        if outside_count > 0:
+            masses = xy_weight_outside_masses.get(key, [])
+            mass_str = ", ".join(f"{m:.4f}" for m in masses)
+            mass_label = "mass" if outside_count == 1 else "masses"
+            outside_tag = f"{outside_count} - with {mass_label} {mass_str}"
         lines.append(
             f"{key}: total={total} ({total_count}), inside={inside} ({inside_count}), "
-            f"outside={outside} ({outside_count})\n"
+            f"outside={outside} ({outside_tag})\n"
         )
     txt_path = outfile_base + 'xy.txt'
     try:

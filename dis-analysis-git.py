@@ -472,7 +472,7 @@ def fill_SBT_plots(event, sgeo, ShipGeo, part_vtx=None, part_mom=None, weight=1,
     h['Massdistr_at_UBT_all'].Fill(mass, weight)
     x_UBT, y_UBT = find_zUBT_xy(event, sgeo)
     h['xy_at_UBT_all'].Fill(x_UBT, y_UBT, weight)
-    record_xy_weight('xy_at_UBT_all', x_UBT, y_UBT, weight)
+    record_xy_weight('xy_at_UBT_all', x_UBT, y_UBT, weight, mass=mass)
 
 
 
@@ -525,7 +525,7 @@ def fill_SBT_plots(event, sgeo, ShipGeo, part_vtx=None, part_mom=None, weight=1,
 
     h[f'Massdistr_at_UBT_{item}'].Fill(mass, weight)
     h[f'xy_at_UBT_{item}'].Fill(x_UBT, y_UBT, weight)
-    record_xy_weight(f'xy_at_UBT_{item}', x_UBT, y_UBT, weight)
+    record_xy_weight(f'xy_at_UBT_{item}', x_UBT, y_UBT, weight, mass=mass)
     if item == 'helium':
         inside = (x_UBT >= x0) and (x_UBT <= x1) and (y_UBT >= y0) and (y_UBT <= y1)
         if inside:
