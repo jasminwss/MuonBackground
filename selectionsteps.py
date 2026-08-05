@@ -120,13 +120,17 @@ def persist_xy_weight_sums(outfile_base):
 
 def persist_selection_table(outfile_base):
     """Write weighted selection cutflow per region to txt and print as table.
-    
+
     If a cell in the helium or SBT(sum) row hits 0, all remaining cells in that
     row are backfilled using:
-        backfilled = last_nonzero * (cut_eff_count / has_a_reco_candidate_count)
+        backfilled = last_nonzero * (cut_eff_count / has_reco_cand_count)
     The backfilled number is suffixed with 'f' so it is visually distinct.
-    Steps without an EffCuts mapping (e.g. 'incl. final state PID') are left as 0.
-    This could of course be extended but is too complicated for now and it has not been the case yet that those steps are the ones with missing counts.
+    Step 7 ('incl. final state PID') has no cut_eff_counts/EffCuts mapping, so it is
+    backfilled instead from the PID-specific efficiency reported in EffPID.txt (row 'll'
+    for dileptonic/partialreco, row 'lx' for semileptonic/fullreco):
+        backfilled = last_nonzero * (pid_eff_counts[pid_row][region] / pid_eff_event_counts[region])
+    Any later step that is itself backfilled (e.g. SBT veto) multiplies against this new
+    PID estimate rather than the pre-PID value, so the cascade stays monotonic/consistent.
     """
     if not counts:
         return
@@ -145,7 +149,14 @@ def persist_selection_table(outfile_base):
         ip_effcuts_row = 'IP<IP(z)'
     if channel == 'partialreco' and partial_IP_cut is not None:
         ip_effcuts_row = f'IP<{partial_IP_cut}'
-    
+
+    # --- choose PID efficiency row name based on active channel (mirrors EffPID.txt rows) ---
+    if channel == 'partialreco':
+        pid_row = 'll'   # dileptonic
+    elif channel == 'fullreco':
+        pid_row = 'lx'   # semileptonic
+    else:
+        pid_row = None
 
     # --- choose SBT veto row name based on active threshold ---
     sbt_veto_effcuts_row = 'SBT veto' if SBTVeto is not None else None
@@ -159,7 +170,7 @@ def persist_selection_table(outfile_base):
     #  4 fiducial                    -> fiducial
     #  5 DOCA<1cm                    -> DOCA
     #  6 impact parameter            -> IP<10 or IP<IP(z)
-    #  7 incl. final state PID       <- no EffCuts row
+    #  7 incl. final state PID       -> pid_eff_counts[pid_row][region] / pid_eff_event_counts[region] (EffPID.txt row 'll'/'lx'), not cut_eff_counts
     #  8 SBT Veto + ...              -> SBT veto X MeV
     # (9 mass cut if present         -> no direct row)
     step_to_effcuts = {
@@ -186,36 +197,50 @@ def persist_selection_table(outfile_base):
             8: denom_sbt,      # SBT veto
         }
 
+        def backfilled_value(i, last_nonzero):
+            """Estimate for step i given the running last_nonzero, or None if it can't be computed.
+
+            Step 7 ('incl. final state PID') has no cut_eff_counts/EffCuts mapping, so it is
+            backfilled from the PID-specific efficiency reported in EffPID.txt instead (row 'll'
+            for dileptonic, row 'lx' for semileptonic). All other mapped steps (incl. step 8,
+            SBT veto) keep using cut_eff_counts as before, so they multiply against this new
+            PID estimate once it is their turn.
+            """
+            if last_nonzero is None or last_nonzero == 0.0:
+                return None
+            if i == 7:
+                if not pid_row:
+                    return None
+                pid_denom = pid_eff_event_counts[region_key]
+                if not pid_denom:
+                    return None
+                eff = pid_eff_counts[pid_row][region_key] / pid_denom
+                return last_nonzero * eff
+            effcuts_row = step_to_effcuts.get(i)
+            denom = step_denom.get(i, denom_default)
+            if not effcuts_row or not denom:
+                return None
+            eff = cut_eff_counts[effcuts_row][region_key]['all'] / denom
+            return last_nonzero * eff
+
         result = []
         last_nonzero = None
         backfilling = False
 
         for i, v in enumerate(raw_vals):
-            denom = step_denom.get(i, denom_default)  # <-- look up per step here
-            if not backfilling:
-                if v != 0.0:
-                    last_nonzero = v
-                    result.append(f"{v:.6g}")
-                else:
-                    effcuts_row = step_to_effcuts.get(i)
-                    if effcuts_row and denom and last_nonzero is not None:
-                        eff = cut_eff_counts[effcuts_row][region_key]['all'] / denom
-                        filled = last_nonzero * eff
-                        last_nonzero = filled
-                        result.append(f"{filled:.6g}f")
-                        backfilling = True
-                    else:
-                        result.append("0")
-                        backfilling = True
+            if not backfilling and v != 0.0:
+                last_nonzero = v
+                result.append(f"{v:.6g}")
+                continue
+
+            filled = backfilled_value(i, last_nonzero)
+            if filled is not None:
+                last_nonzero = filled
+                result.append(f"{filled:.6g}f")
             else:
-                effcuts_row = step_to_effcuts.get(i)
-                if effcuts_row and denom and last_nonzero is not None and last_nonzero != 0.0:
-                    eff = cut_eff_counts[effcuts_row][region_key]['all'] / denom
-                    filled = last_nonzero * eff
-                    last_nonzero = filled
-                    result.append(f"{filled:.6g}f")
-                else:
-                    result.append("0")
+                result.append("0")
+            backfilling = True
+
         return result
 
     headers = ['region'] + selection_steps
@@ -264,7 +289,8 @@ def persist_selection_table(outfile_base):
             if he_has_zero_after_nonzero or sbt_has_zero_after_nonzero:
                 txt_out.write(
                     "\n[_bf rows: zeros replaced by last_nonzero * (EffCuts_count / has_reco_candidate_count); "
-                    f"IP eff used: {ip_effcuts_row}, SBT veto eff used: {sbt_veto_effcuts_row}]\n"
+                    "step 7 (PID) uses last_nonzero * (pid_eff_counts[pid_row][region] / pid_eff_event_counts[region]) from EffPID.txt instead; "
+                    f"IP eff used: {ip_effcuts_row}, SBT veto eff used: {sbt_veto_effcuts_row}, PID eff row used: {pid_row}]\n"
                 )
         print(f"Selection counts table to {txt_path}")
     except Exception as e:
@@ -546,8 +572,6 @@ def update_selection_rawcounts(region_label, step_index):
     if step_index < 0 or step_index >= len(selection_steps):
         return
     counts_raw[region_label][step_index] += 1
-
-
 
 def _xyz_ensure(key):
     """Ensure key exists in xyz_groups."""

@@ -293,6 +293,8 @@ ut.bookHist(
 )
 
 ut.bookHist(h, f'x-y-IS-SBT', f'x-y-distribution of vertices in SBT before cuts; x [cm]; y[cm]',bin_coord,low_x,high_x,bin_coord,low_y,high_y)
+ut.bookHist(h, f'z-IS-SBT', f'z-distribution of vertices in SBT before cuts; z [cm]; Events',50,-2500,2500)
+ut.bookHist(h, f'z-IS-SBT-after-cuts', f'z-distribution of vertices in SBT after cuts; z [cm]; Events',50,-2500,2500)
 
 # ---------- histogram setup (in the booking section at the top) ----------#
 ut.bookHist(h, 'vtx_eff_z_reconstructible', 
@@ -316,6 +318,8 @@ keylist_hist.append('Energy_distribution')
 keylist_hist.append('Energy_distribution2')
 keylist_colz.append('Dist2WallvsVtx_z')
 keylist_colz.append('x-y-IS-SBT')
+keylist_hist.append('z-IS-SBT')
+keylist_hist.append('z-IS-SBT-after-cuts')
 
 
 # ---------- functions used for analysis ----------#
@@ -1158,7 +1162,9 @@ def main_analysis(event, sgeo, ShipGeo, rescale_fn=None, eventNr=None, counts=No
         #y_SBT = part_vtx.Y() #reco values
         x_DIS = event.MCTrack[0].GetStartX()
         y_DIS = event.MCTrack[0].GetStartY()
+        z_DIS = event.MCTrack[0].GetStartZ()
         h['x-y-IS-SBT'].Fill(x_DIS, y_DIS, weight)
+        h['z-IS-SBT'].Fill(z_DIS, weight)
 
     # ---------- apply cuts ----------#  
     if region_label:
@@ -1308,6 +1314,7 @@ def main_analysis(event, sgeo, ShipGeo, rescale_fn=None, eventNr=None, counts=No
                                             mu_origin_counts.append((region_label, pdg1, pdg2, selected_mom.M()))
                                             mu_origin_counts.append((region_label, pdg1, pdg2, selected_mom.M()))
                                             if baseName in sbt_region_names:
+                                                h['z-IS-SBT-after-cuts'].Fill(event.MCTrack[0].GetStartZ(), weight)
                                                 # build a single multi‑line string instead of printing directly
                                                 msg = []
                                                 msg.append(f"DIS in SBT passing cuts - region label: {region_label}\n")
