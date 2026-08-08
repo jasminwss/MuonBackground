@@ -59,7 +59,13 @@ ana_part = 'muon'
 # ---------- define regions  ----------#
 
 if options.mass_cut:
-    selection_steps.append('mass > 0.15 GeV + SBT veto')
+    selection_steps.append('mass > 0.15 GeV')
+    # counts/counts_raw were already built (in selectionsteps.py, at import time) with the
+    # pre-append length, so pad them here to stay in sync with the now-longer selection_steps.
+    for reg in counts:
+        counts[reg].append(0.0)
+    for reg in counts_raw:
+        counts_raw[reg].append(0)
 
 if options.partial_IP_cut:
     _dynamic_ip_row = f'IP<{int(options.partial_IP_cut)}'

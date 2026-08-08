@@ -172,7 +172,7 @@ def persist_selection_table(outfile_base):
     #  6 impact parameter            -> IP<10 or IP<IP(z)
     #  7 incl. final state PID       -> pid_eff_counts[pid_row][region] / pid_eff_event_counts[region] (EffPID.txt row 'll'/'lx'), not cut_eff_counts
     #  8 SBT Veto + ...              -> SBT veto X MeV
-    # (9 mass cut if present         -> no direct row)
+    #  9 mass cut, if present        -> 'mass > 0.15 GeV'
     step_to_effcuts = {
         2: 'good daughter',
         3: '1reco cand',
@@ -182,6 +182,8 @@ def persist_selection_table(outfile_base):
     }
     if sbt_veto_effcuts_row is not None:
         step_to_effcuts[8] = sbt_veto_effcuts_row
+    if len(selection_steps) > 9:
+        step_to_effcuts[9] = 'mass > 0.15 GeV'
 
     def backfill_row(raw_vals, region_key):
         #denom_default = cut_eff_counts['has a reco candidate'][region_key]['all']
@@ -195,6 +197,7 @@ def persist_selection_table(outfile_base):
             5: denom_default,
             6: denom_default,
             8: denom_sbt,      # SBT veto
+            9: denom_default,  # mass cut
         }
 
         def backfilled_value(i, last_nonzero):
@@ -332,7 +335,7 @@ def persist_selection_rawtable(outfile_base):
     #  6 impact parameter            -> IP<10 or IP<IP(z)
     #  7 incl. final state PID       <- no EffCuts row
     #  8 SBT Veto + ...              -> SBT veto X MeV
-    # (9 mass cut if present         -> no direct row)
+    #  9 mass cut, if present        -> 'mass > 0.15 GeV'
     step_to_effcuts = {
         2: 'good daughter',
         3: '1reco cand',
