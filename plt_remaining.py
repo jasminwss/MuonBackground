@@ -94,13 +94,13 @@ def draw_pair(ax, no_veto, veto, color):
     if direct.any():
         ax.scatter(
             x[direct] - DODGE, no_veto_vals[direct], label="no veto",
-            marker=DIRECT_MARKER, s=90, facecolor=color, edgecolor=INK_PRIMARY,
+            marker=DIRECT_MARKER, s=270, facecolor=color, edgecolor=INK_PRIMARY,
             linewidth=0.8, zorder=3,
         )
     if no_veto_mask.any():
         ax.scatter(
             x[no_veto_mask] - DODGE, no_veto_vals[no_veto_mask], label="no veto (factorized)",
-            marker=FACTORIZED_MARKER, s=90, facecolor=color, edgecolor=FACTORIZED_EDGE,
+            marker=FACTORIZED_MARKER, s=270, facecolor=color, edgecolor=FACTORIZED_EDGE,
             linewidth=2.4, zorder=3,
         )
 
@@ -108,14 +108,14 @@ def draw_pair(ax, no_veto, veto, color):
     if direct.any():
         ax.scatter(
             x[direct] + DODGE, veto_vals[direct], label="SBT veto 90 MeV",
-            marker=DIRECT_MARKER, s=150, facecolor='none', edgecolor=color,
+            marker=DIRECT_MARKER, s=450, facecolor='none', edgecolor=color,
             linewidth=2.2, zorder=4,
         )
     if veto_mask.any():
         # factorized veto points additionally get a dashed ring to flag they are backfilled, not directly counted
         ax.scatter(
             x[veto_mask] + DODGE, veto_vals[veto_mask], label="SBT veto 90 MeV (factorized)",
-            marker=FACTORIZED_MARKER, s=150, facecolor='none', edgecolor=FACTORIZED_EDGE,
+            marker=FACTORIZED_MARKER, s=450, facecolor='none', edgecolor=FACTORIZED_EDGE,
             linewidth=2.6, linestyle="--", zorder=4,
         )
     return x
@@ -124,9 +124,9 @@ def draw_pair(ax, no_veto, veto, color):
 def style_axis(ax, show_xticklabels, prune=None):
     ax.set_facecolor(SURFACE)
     ax.set_xticks(np.arange(len(config)))
-    ax.set_xticklabels(config if show_xticklabels else [], color=INK_PRIMARY, fontsize=22)
+    ax.set_xticklabels(config if show_xticklabels else [], color=INK_PRIMARY, fontsize=40)
     ax.yaxis.set_major_locator(MaxNLocator(nbins=3, prune=prune))
-    ax.tick_params(axis='y', colors=INK_MUTED, labelsize=20)
+    ax.tick_params(axis='y', colors=INK_MUTED, labelsize=40)
     ax.tick_params(axis='x', colors=INK_MUTED, length=0)
     for spine_name in ("top", "right"):
         ax.spines[spine_name].set_visible(False)
@@ -167,7 +167,7 @@ LEGEND_HANDLES = [
            label="SBT veto 90 MeV (factorized)"),
 ]
 
-fig = plt.figure(figsize=(20, 13))
+fig = plt.figure(figsize=(30, 19.5))
 fig.patch.set_facecolor(SURFACE)
 outer = fig.add_gridspec(
     2, 2, hspace=1.0, wspace=0.55,
@@ -180,8 +180,8 @@ for cell, panel in zip(outer, panels):
         ax = fig.add_subplot(cell)
         draw_pair(ax, panel["no_veto"], panel["veto"], panel["color"])
         style_axis(ax, show_xticklabels=True)
-        ax.set_title(panel["title"], color=INK_PRIMARY, fontsize=26)
-        ax.set_ylabel("Remaining Events", color=INK_PRIMARY, fontsize=22, labelpad=18)
+        ax.set_title(panel["title"], color=INK_PRIMARY, fontsize=40)
+        ax.set_ylabel("Remaining Events", color=INK_PRIMARY, fontsize=40, labelpad=18)
     else:
         n = len(tiers)
         inner = GridSpecFromSubplotSpec(n, 1, subplot_spec=cell, height_ratios=[1] * n, hspace=0.08)
@@ -208,15 +208,15 @@ for cell, panel in zip(outer, panels):
         for ax_top, ax_bottom in zip(tier_axes, tier_axes[1:]):
             add_break_marks(ax_top, ax_bottom)
 
-        tier_axes[0].set_title(panel["title"], color=INK_PRIMARY, fontsize=26)
-        tier_axes[-1].set_ylabel("Remaining Events", color=INK_PRIMARY, fontsize=22)
+        tier_axes[0].set_title(panel["title"], color=INK_PRIMARY, fontsize=40)
+        tier_axes[-1].set_ylabel("Remaining Events", color=INK_PRIMARY, fontsize=40)
         tier_axes[-1].yaxis.set_label_coords(-0.22, n / 2)
 
-fig.suptitle("Muon Background - Remaining Events", color=INK_PRIMARY, fontsize=30, y=0.97)
+fig.suptitle("Muon Background - Remaining Events", color=INK_PRIMARY, fontsize=40, y=0.97)
 fig.legend(
     handles=LEGEND_HANDLES, loc="center", bbox_to_anchor=(0.53, 0.485),
-    frameon=True, fontsize=20, labelcolor=INK_SECONDARY,
+    frameon=True, fontsize=40, labelcolor=INK_SECONDARY,
     facecolor="#ececea", edgecolor=BASELINE, framealpha=0.95,
 ).get_frame().set_linewidth(1.2)
-fig.savefig("MuonBackground_remaining_events.png", facecolor=SURFACE)
+fig.savefig("MuonBackground_remaining_events.png", facecolor=SURFACE, bbox_inches="tight")
 plt.show()

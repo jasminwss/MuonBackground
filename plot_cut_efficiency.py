@@ -105,7 +105,7 @@ def plot(data, cut, output):
     if missing:
         print(f"Warning: cut '{cut}' missing in categories {missing}, skipped")
 
-    fig, ax = plt.subplots(figsize=(8, 5), dpi=150)
+    fig, ax = plt.subplots(figsize=(9, 6), dpi=150)
     fig.patch.set_facecolor(SURFACE)
     ax.set_facecolor(SURFACE)
 
@@ -126,27 +126,30 @@ def plot(data, cut, output):
         for b in bars:
             h = b.get_height()
             ax.text(
-                b.get_x() + b.get_width() / 2, h + headroom, f"{h:.2f}",
-                ha="center", va="bottom", fontsize=7.5, color=INK_SECONDARY,
+                b.get_x() + b.get_width() / 2, h + headroom, f"{h:.1f}",
+                ha="center", va="bottom", fontsize=12, color=INK_SECONDARY,
             )
 
     ax.set_xticks(x)
-    ax.set_xticklabels(categories, color=INK_PRIMARY, fontsize=9)
-    ax.set_ylabel("Efficiency (%)", color=INK_PRIMARY, fontsize=10)
-    ax.set_ylim(0, y_max * 1.15)
-    ax.set_title(f"Cut efficiency: {cut}", color=INK_PRIMARY, fontsize=12, pad=14)
+    ax.set_xticklabels(categories, color=INK_PRIMARY, fontsize=14)
+    ax.set_ylabel("Efficiency (%)", color=INK_PRIMARY, fontsize=16)
+    ax.set_ylim(0, y_max * 1.2)
+    ax.set_title(f"Cut efficiency: {cut}", color=INK_PRIMARY, fontsize=18, pad=42)
 
     ax.set_facecolor(SURFACE)
-    ax.tick_params(axis="y", colors=INK_MUTED, labelsize=9)
+    ax.tick_params(axis="y", colors=INK_MUTED, labelsize=13)
     ax.tick_params(axis="x", colors=INK_MUTED, length=0)
     for spine_name in ("top", "right", "left"):
         ax.spines[spine_name].set_visible(False)
     ax.spines["bottom"].set_color(BASELINE)
 
-    ax.legend(loc="upper right", frameon=False, fontsize=9, labelcolor=INK_SECONDARY)
+    ax.legend(
+        loc="lower center", bbox_to_anchor=(0.5, 1.02), ncol=2,
+        frameon=False, fontsize=13, labelcolor=INK_SECONDARY,
+    )
 
     fig.tight_layout()
-    fig.savefig(output, facecolor=SURFACE)
+    fig.savefig(output, facecolor=SURFACE, bbox_inches="tight")
     plt.close(fig)
 
 
