@@ -1130,7 +1130,7 @@ def main_analysis(event, sgeo, ShipGeo, rescale_fn=None, eventNr=None, counts=No
                     cut_eff_counts['IP<250'][region_key][cand_label] += weight
                 if ip_partial_any:
                     _row = f'IP<{int(partial_IP_cut)}'
-                    if _row in cut_eff_counts:
+                    if _row in cut_eff_counts and _row not in ('IP<10', 'IP<250'):
                         cut_eff_counts[_row][region_key][cand_label] += weight
                 if ipz_any:
                     cut_eff_counts['IP<IP(z)'][region_key][cand_label] += weight
