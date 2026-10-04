@@ -1,3 +1,5 @@
+# works with fairship 24.10
+
 import rootUtils as ut
 from rootpyPickler import Unpickler
 import ROOT, os
