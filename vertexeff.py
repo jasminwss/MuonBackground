@@ -49,7 +49,8 @@ def is_reconstructible_mc(event, mc_idx, ShipGeo, veto_geo):
     vertex_node = ROOT.gGeoManager.FindNode(vtx.X(), vtx.Y(), vtx.Z())
     if not vertex_node:
         return False
-    if not vertex_node.GetVolume().GetName().startswith("DecayVacuum_"):
+    # helium volume: 'DecayVacuum_*' (FairShip 24.x) or 'decay_medium' (26.x)
+    if not vertex_node.GetVolume().GetName().startswith(("DecayVacuum_", "decay_medium")):
         return False
 
     return n_hits >= 25 and len(stations_hit) >= 3

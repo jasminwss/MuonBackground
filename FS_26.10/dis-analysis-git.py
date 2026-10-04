@@ -1,18 +1,25 @@
-# is about to work with fairship 26.10
+# works with fairship 26.10
 
+import ROOT, os
+from argparse import ArgumentParser
+from ShipGeoConfig import load_from_root_file
 import rootUtils as ut
-from rootpyPickler import Unpickler
-import ROOT, os, sys
+from array import array
+import numpy as np
+
+#from rootpyPickler import Unpickler
+import ROOT, os, sys, glob
 # shared modules (selectionsteps, vertexeff, dis_surviving_xyzplots) live one level up
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 import geomGeant4
+import shipRoot_conf  # loads libgenfit2 + headers (GenFit 02-03-00 has no rootmap/PCM)
 from argparse import ArgumentParser
 from collections import defaultdict
 from tabulate import tabulate
 import yaml
 from ShipGeoConfig import AttrDict
+
 import dis_surviving_xyzplots as xyzplots
-from array import array
 from vertexeff import compute_vertexing_efficiency, persist_vertexing_efficiency, check_charge_misid, is_reconstructible_mc
 import selectionsteps
 from selectionsteps import (region_labels, selection_steps, sbt_region_names, h,
@@ -104,10 +111,10 @@ _genfit_field_ready = False
 
 # ---------- setting up test option ----------#
 if options.testing_code:
-     directory = '/afs/cern.ch/work/j/jaweiss/private/test_'
+     directory = '/afs/cern.ch/work/j/jaweiss/private/MuonBackground/FS_26.10/test_'
      print('test option')
 else:
-     directory = '/eos/user/j/jaweiss/results_muonbackground/'
+     directory = '/eos/user/j/jaweiss/results_muonbackground/FS_26.10/'
      print('no test')
 
 # ---------- extracting information from arguments ----------#
@@ -574,6 +581,8 @@ def dis_region_basename(event, sgeo):
     if not node:
             return None
     base = node.GetName().split("_")[0]
+    if base == 'decay':  # helium volume is 'decay_medium' in FairShip >= 26.x (was 'DecayVacuum')
+            base = 'DecayVacuum'
     if base[:4] == 'LiSc':
             base = 'LiSc'
     if base == 'VetoVerticalRib':
@@ -616,7 +625,7 @@ def is_in_fiducial(candidate, event, sgeo, ShipGeo):
         candidate_pos.X(), candidate_pos.Y(), candidate_pos.Z()
     )
     vertex_elem = vertex_node.GetVolume().GetName()
-    if not vertex_elem.startswith("DecayVacuum_"):
+    if not vertex_elem.startswith(("DecayVacuum_", "decay_medium")):
         return False
 
     t1, t2 = candidate.GetDaughter(0), candidate.GetDaughter(1)
@@ -766,8 +775,13 @@ def initial_AnalysisContext(ShipGeo):
     global _genfit_field_ready, _field_maker, _genfit_bfield
     if _genfit_field_ready:
         return
-    ShipGeo.Bfield.fieldMap = os.path.join(fairship, "files/MainSpectrometerField.root")
-    #ShipGeo.Bfield.fieldMap = "files/TRY_2025.root"
+    # keep the field map stored in the geofile (= the one used in simulation); path is relative,
+    # FairShip prepends $VMCWORKDIR itself
+    if getattr(ShipGeo.Bfield, "fieldMap", None):
+        print(f"Using field map from geofile: {ShipGeo.Bfield.fieldMap}")
+    else:
+        ShipGeo.Bfield.fieldMap = "files/2026_09_28_SHiP_SpectrometerField_ECN3_MgB2.root"
+        print(f"WARNING: no field map in geofile, using fallback: {ShipGeo.Bfield.fieldMap}")
     # addVMCFields resolves relative file paths via $VMCWORKDIR; point it to FairShip so
     # 'files/MainSpectrometerField.root' resolves correctly instead of landing in FairRoot examples.
     os.environ['VMCWORKDIR'] = fairship
@@ -961,6 +975,7 @@ def main_analysis(event, sgeo, ShipGeo, rescale_fn=None, eventNr=None, counts=No
     # ---------- material of scattering point ----------#
     origin_node = sgeo.FindNode(event.MCTrack[0].GetStartX(),event.MCTrack[0].GetStartY(),event.MCTrack[0].GetStartZ()).GetName()
     baseName = origin_node.split("_")[0]
+    if baseName == 'decay': baseName = 'DecayVacuum'  # 'decay_medium' in new geometry
     if baseName[:4] == 'LiSc': baseName = 'LiSc'
     if baseName == 'VetoVerticalRib': baseName = 'VetoLongitRib'
 
@@ -1385,17 +1400,25 @@ def Main_function():
         # Process each job directory in current path
         for jobDir in os.listdir(current_path):
             try:
-                inputFile = f'{current_path}/{jobDir}/ship.conical.muonDIS-TGeant4_rec.root'
-                
-                f = ROOT.TFile.Open(inputFile)
-                tree = f.cbmsim
-                
+                sim_files = glob.glob(f'{current_path}/{jobDir}/sim_*.root')
+                reco_files = glob.glob(f'{current_path}/{jobDir}/reco_*.root')
+                if not sim_files or not reco_files:
+                    print(f'Missing sim/reco file in {current_path}/{jobDir}, skipping.')
+                    continue
+
+                # MC truth (MCTrack, vetoPoint, ...) lives in the sim file, reco output
+                # (Particles, FitTracks, ...) in ship_reco_sim of the reco file -> attach as friend
+                f = ROOT.TFile.Open(sim_files[0])
+                tree = f.Get("cbmsim")
+                tree.AddFriend("ship_reco_sim", reco_files[0])
+
                 if not sgeo:
-                    geoFile = f'{current_path}/{jobDir}/geofile_full.conical.muonDIS-TGeant4.root'
-                    fgeo = ROOT.TFile(geoFile)
-                    upkl = Unpickler(fgeo)
-                    ShipGeo = upkl.load('ShipGeo')
-                    sgeo = fgeo.FAIRGeom
+                    geoFile = f'{current_path}/{jobDir}/geo*.root'
+                    geo_files = glob.glob(geoFile)
+                    fgeo = ROOT.TFile.Open(geo_files[0])
+                    ShipGeo = load_from_root_file(fgeo, "ShipGeo")
+                    print('ShipGeo loaded')
+                    sgeo = fgeo["FAIRGeom"]
                     if not _genfit_field_ready:
                         initial_AnalysisContext(ShipGeo)
                 
@@ -1426,7 +1449,7 @@ def Main_function():
                 exception_issues[jobDir] = e
                 continue
 
-    # ... rest of existing code for saving histograms ...
+    # ... rest of existing code for saving histograms & tables...
     outdir = os.path.join(directory, tag + options_tag)
     os.makedirs(outdir, exist_ok=True)
     output_base = os.path.join(outdir, '')  # ergibt outdir + '/' als Präfix
