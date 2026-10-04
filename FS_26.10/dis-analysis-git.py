@@ -1,8 +1,10 @@
-# works with fairship 24.10
+# is about to work with fairship 26.10
 
 import rootUtils as ut
 from rootpyPickler import Unpickler
-import ROOT, os
+import ROOT, os, sys
+# shared modules (selectionsteps, vertexeff, dis_surviving_xyzplots) live one level up
+sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 import geomGeant4
 from argparse import ArgumentParser
 from collections import defaultdict
